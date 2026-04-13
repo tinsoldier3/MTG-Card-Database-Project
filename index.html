@@ -61,13 +61,15 @@
         let grid = document.getElementById("cardGrid");
         grid.innerHTML = "";
 
-        collection.forEach(function(card) {
+        collection.forEach(function(card, index) {
           let newCard = document.createElement("div");
           newCard.className = "card";
           newCard.innerHTML = `
-            <img src="${card.image}" style="width:100%; border-radius:4px;" />
-            <div class="card-name">${card.name}</div>
-            <div class="card-type">${card.type}</div>
+  <img src="${card.image}" style="width:100%; border-radius:4px;" />
+  <div class="card-name">${card.name}</div>
+  <div class="card-type">${card.type}</div>
+  <button onclick="removeCard(${index})" style="margin-top:8px; width:100%;">Remove</button>
+`;
           `;
           grid.appendChild(newCard);
         });
@@ -97,6 +99,11 @@
 
       displayCards();
 
+      function removeCard(index) {
+  collection.splice(index, 1);
+  saveCollection();
+  displayCards();
+}
     </script>
   </body>
 
