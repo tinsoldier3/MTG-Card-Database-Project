@@ -65,9 +65,31 @@
     <input type="text" id="cardInput" placeholder="Card name..." />
 <button onclick="addCard()">Add card</button>
 
-<<script>
-  async function addCard() {
+<script>
 
+  let collection = JSON.parse(localStorage.getItem("mtgCollection")) || [];
+
+  function saveCollection() {
+    localStorage.setItem("mtgCollection", JSON.stringify(collection));
+  }
+
+  function displayCards() {
+    let grid = document.getElementById("cardGrid");
+    grid.innerHTML = "";
+
+    collection.forEach(function(card) {
+      let newCard = document.createElement("div");
+      newCard.className = "card";
+      newCard.innerHTML = `
+        <img src="${card.image}" style="width:100%; border-radius:4px;" />
+        <div class="card-name">${card.name}</div>
+        <div class="card-type">${card.type}</div>
+      `;
+      grid.appendChild(newCard);
+    });
+  }
+
+  async function addCard() {
     let cardName = document.getElementById("cardInput").value;
 
     if (cardName === "") {
@@ -78,20 +100,9 @@
     let response = await fetch("https://api.scryfall.com/cards/named?fuzzy=" + cardName);
     let card = await response.json();
 
-    let grid = document.getElementById("cardGrid");
-
-    let newCard = document.createElement("div");
-    newCard.className = "card";
-    newCard.innerHTML = `
-      <img src="${card.image_uris.normal}" style="width:100%; border-radius:4px;" />
-      <div class="card-name">${card.name}</div>
-      <div class="card-type">${card.type_line}</div>
-    `;
-
-    grid.appendChild(newCard);
-    document.getElementById("cardInput").value = "";
-  }
-</script>
+    collection.push({
+      name: card.name,
+      type: card.type_line,
   </body>
 
 </html>
