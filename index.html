@@ -44,65 +44,60 @@
     <h1>My MTG Collection</h1>
     <p>Commander card tracker</p>
 
-    <div class="card-grid" id="cardGrid">
+    <div class="card-grid" id="cardGrid"></div>
 
-      <div class="card">
-        <div class="card-name">Sol Ring</div>
-        <div class="card-type">Artifact</div>
-      </div>
-
-      <div class="card">
-        <div class="card-name">Command Tower</div>
-        <div class="card-type">Land</div>
-      </div>
-
-      <div class="card">
-        <div class="card-name">Arcane Signet</div>
-        <div class="card-type">Artifact</div>
-      </div>
-
-    </div>
     <input type="text" id="cardInput" placeholder="Card name..." />
-<button onclick="addCard()">Add card</button>
+    <button onclick="addCard()">Add card</button>
 
-<script>
+    <script>
 
-  let collection = JSON.parse(localStorage.getItem("mtgCollection")) || [];
+      let collection = JSON.parse(localStorage.getItem("mtgCollection")) || [];
 
-  function saveCollection() {
-    localStorage.setItem("mtgCollection", JSON.stringify(collection));
-  }
+      function saveCollection() {
+        localStorage.setItem("mtgCollection", JSON.stringify(collection));
+      }
 
-  function displayCards() {
-    let grid = document.getElementById("cardGrid");
-    grid.innerHTML = "";
+      function displayCards() {
+        let grid = document.getElementById("cardGrid");
+        grid.innerHTML = "";
 
-    collection.forEach(function(card) {
-      let newCard = document.createElement("div");
-      newCard.className = "card";
-      newCard.innerHTML = `
-        <img src="${card.image}" style="width:100%; border-radius:4px;" />
-        <div class="card-name">${card.name}</div>
-        <div class="card-type">${card.type}</div>
-      `;
-      grid.appendChild(newCard);
-    });
-  }
+        collection.forEach(function(card) {
+          let newCard = document.createElement("div");
+          newCard.className = "card";
+          newCard.innerHTML = `
+            <img src="${card.image}" style="width:100%; border-radius:4px;" />
+            <div class="card-name">${card.name}</div>
+            <div class="card-type">${card.type}</div>
+          `;
+          grid.appendChild(newCard);
+        });
+      }
 
-  async function addCard() {
-    let cardName = document.getElementById("cardInput").value;
+      async function addCard() {
+        let cardName = document.getElementById("cardInput").value;
 
-    if (cardName === "") {
-      alert("Please type a card name first!");
-      return;
-    }
+        if (cardName === "") {
+          alert("Please type a card name first!");
+          return;
+        }
 
-    let response = await fetch("https://api.scryfall.com/cards/named?fuzzy=" + cardName);
-    let card = await response.json();
+        let response = await fetch("https://api.scryfall.com/cards/named?fuzzy=" + cardName);
+        let card = await response.json();
 
-    collection.push({
-      name: card.name,
-      type: card.type_line,
+        collection.push({
+          name: card.name,
+          type: card.type_line,
+          image: card.image_uris.normal
+        });
+
+        saveCollection();
+        displayCards();
+        document.getElementById("cardInput").value = "";
+      }
+
+      displayCards();
+
+    </script>
   </body>
 
 </html>
