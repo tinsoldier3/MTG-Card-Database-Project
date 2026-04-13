@@ -47,8 +47,9 @@
 
     <div class="card-grid" id="cardGrid"></div>
 
-    <input type="text" id="cardInput" placeholder="Card name..." />
-    <button onclick="addCard()">Add card</button>
+   <input type="text" id="cardInput" placeholder="Card name..." />
+   <input type="text" id="deckInput" placeholder="Deck name (e.g. Atraxa)..." />
+   <button onclick="addCard()">Add card</button>
 
     <script>
 
@@ -59,20 +60,41 @@
       }
 
       function displayCards() {
-        let grid = document.getElementById("cardGrid");
-        grid.innerHTML = "";
-    document.getElementById("cardCount").textContent = collection.length;
-        collection.forEach(function(card, index) {
-          let newCard = document.createElement("div");
-          newCard.className = "card";
-          newCard.innerHTML = `
-  <img src="${card.image}" style="width:100%; border-radius:4px;" />
-  <div class="card-name">${card.name}</div>
-  <div class="card-type">${card.type}</div>
-  <button onclick="removeCard(${index})" style="margin-top:8px; width:100%;">Remove</button>
-          `;
-          grid.appendChild(newCard);
-        });
+  let grid = document.getElementById("cardGrid");
+  grid.innerHTML = "";
+  document.getElementById("cardCount").textContent = collection.length;
+
+  let decks = {};
+  collection.forEach(function(card, index) {
+    if (!decks[card.deck]) {
+      decks[card.deck] = [];
+    }
+    decks[card.deck].push({ card, index });
+  });
+
+  Object.keys(decks).forEach(function(deckName) {
+    let deckHeader = document.createElement("h2");
+    deckHeader.textContent = deckName;
+    deckHeader.style.cssText = "margin-top:24px; margin-bottom:12px; font-size:18px;";
+    grid.appendChild(deckHeader);
+
+    let deckGrid = document.createElement("div");
+    deckGrid.className = "card-grid";
+    grid.appendChild(deckGrid);
+
+    decks[deckName].forEach(function({ card, index }) {
+      let newCard = document.createElement("div");
+      newCard.className = "card";
+      newCard.innerHTML = `
+        <img src="${card.image}" style="width:100%; border-radius:4px;" />
+        <div class="card-name">${card.name}</div>
+        <div class="card-type">${card.type}</div>
+        <button onclick="removeCard(${index})" style="margin-top:8px; width:100%;">Remove</button>
+      `;
+      deckGrid.appendChild(newCard);
+    });
+  });
+}
       }
 
       async function addCard() {
@@ -86,11 +108,12 @@
         let response = await fetch("https://api.scryfall.com/cards/named?fuzzy=" + cardName);
         let card = await response.json();
 
-        collection.push({
+       collection.push({
           name: card.name,
           type: card.type_line,
-          image: card.image_uris.normal
-        });
+          image: card.image_uris.normal,
+          deck: document.getElementById("deckInput").value || "Unsorted"
+});
 
         saveCollection();
         displayCards();
