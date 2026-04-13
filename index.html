@@ -42,7 +42,7 @@
 
   <body>
     <h1>My MTG Collection</h1>
-    <p>Commander card tracker</p>
+    <p>Commander card tracker — <span id="cardCount">0</span> cards in your collection</p>
 
     <div class="card-grid" id="cardGrid"></div>
 
@@ -60,7 +60,7 @@
       function displayCards() {
         let grid = document.getElementById("cardGrid");
         grid.innerHTML = "";
-
+    ocument.getElementById("cardCount").textContent = collection.length;
         collection.forEach(function(card, index) {
           let newCard = document.createElement("div");
           newCard.className = "card";
