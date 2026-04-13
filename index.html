@@ -44,7 +44,7 @@
     <h1>My MTG Collection</h1>
     <p>Commander card tracker</p>
 
-    <div class="card-grid">
+    <div class="card-grid" id="cardGrid">
 
       <div class="card">
         <div class="card-name">Sol Ring</div>
@@ -62,6 +62,30 @@
       </div>
 
     </div>
+    <input type="text" id="cardInput" placeholder="Card name..." />
+<button onclick="addCard()">Add card</button>
+
+<script>
+  function addCard() {
+    
+    let cardName = document.getElementById("cardInput").value;
+
+    if (cardName === "") {
+      alert("Please type a card name first!");
+      return;
+    }
+
+    let grid = document.getElementById("cardGrid");
+
+    let newCard = document.createElement("div");
+    newCard.className = "card";
+    newCard.innerHTML = "<div class='card-name'>" + cardName + "</div>";
+
+    grid.appendChild(newCard);
+
+    document.getElementById("cardInput").value = "";
+  }
+</script>
   </body>
 
 </html>
