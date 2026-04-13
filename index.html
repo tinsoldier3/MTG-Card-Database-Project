@@ -52,14 +52,13 @@
    <button onclick="addCard()">Add card</button>
 
     <script>
+let collection = JSON.parse(localStorage.getItem("mtgCollection")) || [];
 
-      let collection = JSON.parse(localStorage.getItem("mtgCollection")) || [];
+function saveCollection() {
+  localStorage.setItem("mtgCollection", JSON.stringify(collection));
+}
 
-      function saveCollection() {
-        localStorage.setItem("mtgCollection", JSON.stringify(collection));
-      }
-
-      function displayCards() {
+function displayCards() {
   let grid = document.getElementById("cardGrid");
   grid.innerHTML = "";
   document.getElementById("cardCount").textContent = collection.length;
@@ -70,7 +69,7 @@
       decks[card.deck] = [];
     }
     decks[card.deck].push({ card, index });
-
+  });
 
   Object.keys(decks).forEach(function(deckName) {
     let deckHeader = document.createElement("h2");
@@ -95,38 +94,37 @@
     });
   });
 }
-      }
 
-      async function addCard() {
-        let cardName = document.getElementById("cardInput").value;
+async function addCard() {
+  let cardName = document.getElementById("cardInput").value;
 
-        if (cardName === "") {
-          alert("Please type a card name first!");
-          return;
-        }
+  if (cardName === "") {
+    alert("Please type a card name first!");
+    return;
+  }
 
-        let response = await fetch("https://api.scryfall.com/cards/named?fuzzy=" + cardName);
-        let card = await response.json();
+  let response = await fetch("https://api.scryfall.com/cards/named?fuzzy=" + cardName);
+  let card = await response.json();
 
-       collection.push({
-          name: card.name,
-          type: card.type_line,
-          image: card.image_uris.normal,
-          deck: document.getElementById("deckInput").value || "Unsorted"
-});
+  collection.push({
+    name: card.name,
+    type: card.type_line,
+    image: card.image_uris.normal,
+    deck: document.getElementById("deckInput").value || "Unsorted"
+  });
 
-        saveCollection();
-        displayCards();
-        document.getElementById("cardInput").value = "";
-      }
+  saveCollection();
+  displayCards();
+  document.getElementById("cardInput").value = "";
+}
 
-      displayCards();
-
-      function removeCard(index) {
+function removeCard(index) {
   collection.splice(index, 1);
   saveCollection();
   displayCards();
 }
+
+displayCards();
     </script>
   </body>
 
