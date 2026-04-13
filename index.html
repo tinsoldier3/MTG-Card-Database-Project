@@ -64,11 +64,12 @@ function displayCards() {
   document.getElementById("cardCount").textContent = collection.length;
 
   let decks = {};
-  collection.forEach(function(card, index) {
-    if (!decks[card.deck]) {
-      decks[card.deck] = [];
+ collection.forEach(function(card, index) {
+    let deckName = card.deck || "Unsorted";
+    if (!decks[deckName]) {
+      decks[deckName] = [];
     }
-    decks[card.deck].push({ card, index });
+    decks[deckName].push({ card, index });
   });
 
   Object.keys(decks).forEach(function(deckName) {
