@@ -65,9 +65,9 @@
     <input type="text" id="cardInput" placeholder="Card name..." />
 <button onclick="addCard()">Add card</button>
 
-<script>
-  function addCard() {
-    
+<<script>
+  async function addCard() {
+
     let cardName = document.getElementById("cardInput").value;
 
     if (cardName === "") {
@@ -75,14 +75,20 @@
       return;
     }
 
+    let response = await fetch("https://api.scryfall.com/cards/named?fuzzy=" + cardName);
+    let card = await response.json();
+
     let grid = document.getElementById("cardGrid");
 
     let newCard = document.createElement("div");
     newCard.className = "card";
-    newCard.innerHTML = "<div class='card-name'>" + cardName + "</div>";
+    newCard.innerHTML = `
+      <img src="${card.image_uris.small}" style="width:100%; border-radius:4px;" />
+      <div class="card-name">${card.name}</div>
+      <div class="card-type">${card.type_line}</div>
+    `;
 
     grid.appendChild(newCard);
-
     document.getElementById("cardInput").value = "";
   }
 </script>
