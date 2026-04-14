@@ -179,7 +179,15 @@
   <body>
     <h1>My MTG Collection</h1>
     <p>Commander card tracker — <span id="cardCount">0</span> cards in your collection</p>
-
+<div style="margin-top:16px; margin-bottom:8px;">
+  <input 
+    type="text" 
+    id="searchInput" 
+    placeholder="Search by card name, type, or deck..." 
+    style="width:100%; padding:10px 12px; font:inherit; box-sizing:border-box; border:1px solid #ddd; border-radius:8px;"
+    oninput="displayCards()"
+  />
+</div>
     <div class="deck-list" id="cardGrid"></div>
 
     <div id="progressContainer" style="display:none; margin:16px 0;">
@@ -469,10 +477,13 @@ function displayCards() {
   let filterNote = document.getElementById("filterNote");
   let selectedCommander = document.getElementById("commanderFilter").value;
   let selectedDeck = document.getElementById("deckFilter").value;
+  let searchQuery = document.getElementById("searchInput").value.toLowerCase().trim();
   let visibleCount = 0;
   grid.innerHTML = "";
 
-  if (selectedCommander && selectedDeck) {
+  if (searchQuery) {
+    filterNote.textContent = "Showing results for \"" + searchQuery + "\" — " + visibleCount + " cards found.";
+  } else if (selectedCommander && selectedDeck) {
     let deckLabel = getDeckDisplayLabel(selectedDeck);
     filterNote.textContent = "Showing cards in " + deckLabel + " that are legal in " + selectedCommander + ".";
   } else if (selectedCommander) {
@@ -494,6 +505,15 @@ function displayCards() {
 
     if (!isCardLegalForCommander(card, selectedCommander)) {
       return;
+    }
+
+if (searchQuery) {
+      let nameMatch = card.name.toLowerCase().includes(searchQuery);
+      let typeMatch = (card.type || "").toLowerCase().includes(searchQuery);
+      let deckMatch = deckName.toLowerCase().includes(searchQuery);
+      if (!nameMatch && !typeMatch && !deckMatch) {
+        return;
+      }
     }
 
     visibleCount += 1;
