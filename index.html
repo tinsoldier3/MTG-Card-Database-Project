@@ -131,7 +131,13 @@ function removeCard(index) {
 displayCards();
 
 async function importDeck() {
-  let deckName = document.getElementById("deckInput").value || "Unsorted";
+  let deckName = document.getElementById("deckInput").value.trim();
+
+  if (!deckName) {
+    alert("Please type a deck name before importing!");
+    return;
+  }
+
   let file = document.getElementById("fileInput").files[0];
 
   if (!file) {
@@ -143,25 +149,33 @@ async function importDeck() {
   let lines = text.split("\n");
 
   let cardLines = lines.filter(function(line) {
-    return line.trim() !== "" && !line.startsWith("//");
+    let trimmed = line.trim();
+    return trimmed !== "" && !trimmed.startsWith("//");
   });
 
-  alert("Starting import of " + cardLines.length + " cards. This will take a minute, please wait!");
+  alert("Starting import of " + cardLines.length + " cards into " + deckName + ". Please wait!");
 
   for (let line of cardLines) {
-    let match = line.match(/^\d+\s+(.+?)\s+\([A-Z0-9]+\)/);
-    if (!match) continue;
+    let cleaned = line.replace(/\*F\*/g, "").trim();
+    let match = cleaned.match(/^\d+\s+(.+?)\s+\([A-Z0-9]+\)/);
+    if (!match) {
+      console.log("Skipped line: " + line);
+      continue;
+    }
 
-    let cardName = match[1];
+    let cardName = match[1].trim();
 
     try {
       let response = await fetch("https://api.scryfall.com/cards/named?fuzzy=" + encodeURIComponent(cardName));
       let card = await response.json();
 
-      if (card.object === "error") continue;
+      if (card.object === "error") {
+        console.log("Not found: " + cardName);
+        continue;
+      }
 
-      let imageUri = card.image_uris 
-        ? card.image_uris.normal 
+      let imageUri = card.image_uris
+        ? card.image_uris.normal
         : card.card_faces[0].image_uris.normal;
 
       collection.push({
@@ -172,7 +186,7 @@ async function importDeck() {
       });
 
     } catch(e) {
-      console.log("Skipped: " + cardName);
+      console.log("Error on: " + cardName);
     }
 
     await new Promise(r => setTimeout(r, 100));
@@ -180,7 +194,7 @@ async function importDeck() {
 
   saveCollection();
   displayCards();
-  alert("Import complete!");
+  alert("Import complete! Added cards to " + deckName + ".");
 }
     </script>
   </body>
