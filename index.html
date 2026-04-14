@@ -761,6 +761,9 @@ async function importDeck() {
     if (match) {
       let quantity = parseInt(match[1]);
       let cardName = match[2].trim();
+      if (cardName.includes(" // ")) {
+        cardName = cardName.split(" // ")[0].trim();
+      }
       for (let i = 0; i < quantity; i++) {
         identifiers.push({ name: cardName, foil: isFoil });
       }
