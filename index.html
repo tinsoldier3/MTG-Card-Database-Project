@@ -161,16 +161,17 @@ async function importDeck() {
     if (trimmed.startsWith("// MAYBEBOARD")) {
       inMaybeboard = true;
     }
-    if (trimmed === "" || trimmed.startsWith("// ")) return false;
+    if (trimmed === "" || trimmed.startsWith("// ") || trimmed.startsWith("//")) return false;
     if (inMaybeboard) return false;
     return true;
   });
 
   let identifiers = [];
   cardLines.forEach(function(line) {
+    if (line.includes("{noDeck}")) return;
     let isFoil = line.includes("*F*");
-    let cleaned = line.replace(/\*F\*/g, "").trim();
-    let match = cleaned.match(/^(\d+)\s+(.+?)\s+\([A-Z0-9]+\)/);
+    let cleaned = line.replace(/\*F\*/g, "").replace(/\[.*?\]/g, "").trim();
+    let match = cleaned.match(/^(\d+)x?\s+(.+?)\s+\([a-zA-Z0-9]+\)/);
     if (match) {
       let quantity = parseInt(match[1]);
       let cardName = match[2].trim();
