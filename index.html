@@ -167,6 +167,13 @@ async function importDeck() {
 
     try {
       let response = await fetch("https://api.scryfall.com/cards/named?fuzzy=" + encodeURIComponent(cardName));
+      
+      if (response.status === 429) {
+        console.log("Rate limited, waiting and retrying: " + cardName);
+        await new Promise(r => setTimeout(r, 1000));
+        response = await fetch("https://api.scryfall.com/cards/named?fuzzy=" + encodeURIComponent(cardName));
+      }
+
       let card = await response.json();
 
       if (card.object === "error") {
@@ -189,7 +196,7 @@ async function importDeck() {
       console.log("Error on: " + cardName);
     }
 
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 200));
   }
 
   saveCollection();
