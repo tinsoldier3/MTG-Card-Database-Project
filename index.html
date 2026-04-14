@@ -161,15 +161,16 @@ let cardLines = lines.filter(function(line) {
 
   let identifiers = [];
   cardLines.forEach(function(line) {
-    let cleaned = line.replace(/\*F\*/g, "").trim();
-    let match = cleaned.match(/^(\d+)\s+(.+?)\s+\([A-Z0-9]+\)/);
-    if (match) {
-      let quantity = parseInt(match[1]);
-      let cardName = match[2].trim();
-      for (let i = 0; i < quantity; i++) {
-        identifiers.push({ name: cardName });
-      }
-    }
+    let isFoil = line.includes("*F*");
+let cleaned = line.replace(/\*F\*/g, "").trim();
+let match = cleaned.match(/^(\d+)\s+(.+?)\s+\([A-Z0-9]+\)/);
+if (match) {
+  let quantity = parseInt(match[1]);
+  let cardName = match[2].trim();
+  for (let i = 0; i < quantity; i++) {
+    identifiers.push({ name: cardName, foil: isFoil });
+  }
+}
   });
 
   alert("Importing " + identifiers.length + " cards into " + deckName + ". Please wait!");
@@ -204,12 +205,14 @@ let cardLines = lines.filter(function(line) {
       ? card.image_uris.normal
       : card.card_faces[0].image_uris.normal;
 
-    collection.push({
-      name: card.name,
-      type: card.type_line,
-      image: imageUri,
-      deck: deckName
-    });
+    let identifier = identifiers.find(id => id.name === card.name);
+collection.push({
+  name: card.name,
+  type: card.type_line,
+  image: imageUri,
+  deck: deckName,
+  foil: identifier ? identifier.foil : false
+});
   });
 
   if (notFound.length > 0) {
