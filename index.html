@@ -51,6 +51,9 @@
    <input type="text" id="deckInput" placeholder="Deck name (e.g. Atraxa)..." />
    <button onclick="addCard()">Add card</button>
 
+   <input type="file" id="fileInput" accept=".txt" />
+<button onclick="importDeck()">Import deck</button>
+
     <script>
 let collection = JSON.parse(localStorage.getItem("mtgCollection")) || [];
 
@@ -126,6 +129,59 @@ function removeCard(index) {
 }
 
 displayCards();
+
+async function importDeck() {
+  let deckName = document.getElementById("deckInput").value || "Unsorted";
+  let file = document.getElementById("fileInput").files[0];
+
+  if (!file) {
+    alert("Please select a txt file first!");
+    return;
+  }
+
+  let text = await file.text();
+  let lines = text.split("\n");
+
+  let cardLines = lines.filter(function(line) {
+    return line.trim() !== "" && !line.startsWith("//");
+  });
+
+  alert("Starting import of " + cardLines.length + " cards. This will take a minute, please wait!");
+
+  for (let line of cardLines) {
+    let match = line.match(/^\d+\s+(.+?)\s+\([A-Z0-9]+\)/);
+    if (!match) continue;
+
+    let cardName = match[1];
+
+    try {
+      let response = await fetch("https://api.scryfall.com/cards/named?fuzzy=" + encodeURIComponent(cardName));
+      let card = await response.json();
+
+      if (card.object === "error") continue;
+
+      let imageUri = card.image_uris 
+        ? card.image_uris.normal 
+        : card.card_faces[0].image_uris.normal;
+
+      collection.push({
+        name: card.name,
+        type: card.type_line,
+        image: imageUri,
+        deck: deckName
+      });
+
+    } catch(e) {
+      console.log("Skipped: " + cardName);
+    }
+
+    await new Promise(r => setTimeout(r, 100));
+  }
+
+  saveCollection();
+  displayCards();
+  alert("Import complete!");
+}
     </script>
   </body>
 
