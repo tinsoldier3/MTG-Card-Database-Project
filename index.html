@@ -117,10 +117,14 @@ async function addCard() {
   let response = await fetch("https://api.scryfall.com/cards/named?fuzzy=" + cardName);
   let card = await response.json();
 
+  let imageUri = card.image_uris
+    ? card.image_uris.normal
+    : card.card_faces[0].image_uris.normal;
+
   collection.push({
     name: card.name,
     type: card.type_line,
-    image: card.image_uris.normal,
+    image: imageUri,
     deck: document.getElementById("deckInput").value || "Unsorted"
   });
 
@@ -226,16 +230,13 @@ async function importDeck() {
       : card.card_faces[0].image_uris.normal;
 
     let identifier = identifiers.find(id => id.name === card.name);
-    let addImageUri = card.image_uris
-    ? card.image_uris.normal
-    : card.card_faces[0].image_uris.normal;
-
-  collection.push({
-    name: card.name,
-    type: card.type_line,
-    image: addImageUri,
-    deck: document.getElementById("deckInput").value || "Unsorted"
-  });
+    collection.push({
+      name: card.name,
+      type: card.type_line,
+      image: imageUri,
+      deck: deckName,
+      foil: identifier ? identifier.foil : false
+    });
   });
 
   progressText.textContent = notFound.length > 0
