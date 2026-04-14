@@ -47,6 +47,13 @@
 
     <div class="card-grid" id="cardGrid"></div>
 
+    <div id="progressContainer" style="display:none; margin:16px 0;">
+  <div style="font-size:14px; color:#666; margin-bottom:6px;" id="progressText">Importing...</div>
+  <div style="background:#ddd; border-radius:8px; height:12px; width:100%;">
+    <div id="progressBar" style="background:#4a90d9; height:12px; border-radius:8px; width:0%; transition:width 0.3s;"></div>
+  </div>
+</div>
+
    <input type="text" id="cardInput" placeholder="Card name..." />
    <input type="text" id="deckInput" placeholder="Deck name (e.g. Atraxa)..." />
    <button onclick="addCard()">Add card</button>
@@ -149,7 +156,7 @@ async function importDeck() {
   let lines = text.split("\n");
 
   let inMaybeboard = false;
-let cardLines = lines.filter(function(line) {
+  let cardLines = lines.filter(function(line) {
     let trimmed = line.trim();
     if (trimmed.startsWith("// MAYBEBOARD")) {
       inMaybeboard = true;
@@ -162,26 +169,33 @@ let cardLines = lines.filter(function(line) {
   let identifiers = [];
   cardLines.forEach(function(line) {
     let isFoil = line.includes("*F*");
-let cleaned = line.replace(/\*F\*/g, "").trim();
-let match = cleaned.match(/^(\d+)\s+(.+?)\s+\([A-Z0-9]+\)/);
-if (match) {
-  let quantity = parseInt(match[1]);
-  let cardName = match[2].trim();
-  for (let i = 0; i < quantity; i++) {
-    identifiers.push({ name: cardName, foil: isFoil });
-  }
-}
+    let cleaned = line.replace(/\*F\*/g, "").trim();
+    let match = cleaned.match(/^(\d+)\s+(.+?)\s+\([A-Z0-9]+\)/);
+    if (match) {
+      let quantity = parseInt(match[1]);
+      let cardName = match[2].trim();
+      for (let i = 0; i < quantity; i++) {
+        identifiers.push({ name: cardName, foil: isFoil });
+      }
+    }
   });
-
-  alert("Importing " + identifiers.length + " cards into " + deckName + ". Please wait!");
 
   let chunks = [];
   for (let i = 0; i < identifiers.length; i += 75) {
     chunks.push(identifiers.slice(i, i + 75));
   }
 
+  let progressContainer = document.getElementById("progressContainer");
+  let progressBar = document.getElementById("progressBar");
+  let progressText = document.getElementById("progressText");
+
+  progressContainer.style.display = "block";
+  progressBar.style.width = "0%";
+  progressText.textContent = "Starting import of " + identifiers.length + " cards into " + deckName + "...";
+
   let allCards = [];
   let notFound = [];
+  let processed = 0;
 
   for (let chunk of chunks) {
     let response = await fetch("https://api.scryfall.com/cards/collection", {
@@ -197,6 +211,11 @@ if (match) {
       notFound = notFound.concat(data.not_found);
     }
 
+    processed += chunk.length;
+    let percent = Math.round((processed / identifiers.length) * 100);
+    progressBar.style.width = percent + "%";
+    progressText.textContent = "Imported " + processed + " of " + identifiers.length + " cards...";
+
     await new Promise(r => setTimeout(r, 200));
   }
 
@@ -206,24 +225,30 @@ if (match) {
       : card.card_faces[0].image_uris.normal;
 
     let identifier = identifiers.find(id => id.name === card.name);
-collection.push({
-  name: card.name,
-  type: card.type_line,
-  image: imageUri,
-  deck: deckName,
-  foil: identifier ? identifier.foil : false
-});
+    collection.push({
+      name: card.name,
+      type: card.type_line,
+      image: imageUri,
+      deck: deckName,
+      foil: identifier ? identifier.foil : false
+    });
   });
+
+  progressText.textContent = notFound.length > 0
+    ? "Import complete! " + allCards.length + " cards added. " + notFound.length + " not found."
+    : "Import complete! All " + allCards.length + " cards added to " + deckName + ".";
+  progressBar.style.width = "100%";
 
   if (notFound.length > 0) {
     console.log("Cards not found: ", notFound);
-    alert("Import complete! " + allCards.length + " cards added. " + notFound.length + " not found - check console for details.");
-  } else {
-    alert("Import complete! All " + allCards.length + " cards added to " + deckName + ".");
   }
 
   saveCollection();
   displayCards();
+
+  setTimeout(function() {
+    progressContainer.style.display = "none";
+  }, 3000);
 }
     </script>
   </body>
