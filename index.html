@@ -77,9 +77,9 @@ function displayCards() {
 
   Object.keys(decks).forEach(function(deckName) {
     let deckHeader = document.createElement("h2");
-    deckHeader.textContent = deckName;
-    deckHeader.style.cssText = "margin-top:24px; margin-bottom:12px; font-size:18px;";
-    grid.appendChild(deckHeader);
+deckHeader.textContent = deckName + " (" + decks[deckName].length + " cards)";
+deckHeader.style.cssText = "margin-top:24px; margin-bottom:12px; font-size:18px;";
+grid.appendChild(deckHeader);
 
     let deckGrid = document.createElement("div");
     deckGrid.className = "card-grid";
