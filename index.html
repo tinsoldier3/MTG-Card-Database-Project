@@ -226,13 +226,16 @@ async function importDeck() {
       : card.card_faces[0].image_uris.normal;
 
     let identifier = identifiers.find(id => id.name === card.name);
-    collection.push({
-      name: card.name,
-      type: card.type_line,
-      image: imageUri,
-      deck: deckName,
-      foil: identifier ? identifier.foil : false
-    });
+    let imageUri = card.image_uris
+    ? card.image_uris.normal
+    : card.card_faces[0].image_uris.normal;
+
+  collection.push({
+    name: card.name,
+    type: card.type_line,
+    image: imageUri,
+    deck: document.getElementById("deckInput").value || "Unsorted"
+  });
   });
 
   progressText.textContent = notFound.length > 0
