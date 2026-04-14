@@ -148,9 +148,15 @@ async function importDeck() {
   let text = await file.text();
   let lines = text.split("\n");
 
-  let cardLines = lines.filter(function(line) {
+  let inMaybeboard = false;
+let cardLines = lines.filter(function(line) {
     let trimmed = line.trim();
-    return trimmed !== "" && !trimmed.startsWith("//");
+    if (trimmed.startsWith("// MAYBEBOARD")) {
+      inMaybeboard = true;
+    }
+    if (trimmed === "" || trimmed.startsWith("// ")) return false;
+    if (inMaybeboard) return false;
+    return true;
   });
 
   let identifiers = [];
