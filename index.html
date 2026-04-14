@@ -161,8 +161,8 @@ let cardLines = lines.filter(function(line) {
 
   let identifiers = [];
   cardLines.forEach(function(line) {
-    let isFoil = line.includes("*F*");
-let cleaned = line.replace(/\*F\*/g, "").replace(/\s+\d+$/, "").trim();
+    llet isFoil = line.includes("*F*");
+let cleaned = line.replace(/\*F\*/g, "").trim();
 let match = cleaned.match(/^(\d+)\s+(.+?)\s+\(([A-Z0-9]+)\)\s+\d+/);
 if (match) {
   let quantity = parseInt(match[1]);
