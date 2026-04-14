@@ -153,55 +153,51 @@ async function importDeck() {
     return trimmed !== "" && !trimmed.startsWith("//");
   });
 
-  alert("Starting import of " + cardLines.length + " cards into " + deckName + ". Please wait!");
-
-  for (let line of cardLines) {
+  let cardNames = [];
+  cardLines.forEach(function(line) {
     let cleaned = line.replace(/\*F\*/g, "").trim();
     let match = cleaned.match(/^\d+\s+(.+?)\s+\([A-Z0-9]+\)/);
-    if (!match) {
-      console.log("Skipped line: " + line);
-      continue;
+    if (match) {
+      cardNames.push({ name: match[1].trim() });
     }
+  });
 
-    let cardName = match[1].trim();
+  alert("Importing " + cardNames.length + " cards into " + deckName + ". Please wait!");
 
-    try {
-      let response = await fetch("https://api.scryfall.com/cards/named?fuzzy=" + encodeURIComponent(cardName));
-      
-      if (response.status === 429) {
-        console.log("Rate limited, waiting and retrying: " + cardName);
-        await new Promise(r => setTimeout(r, 1000));
-        response = await fetch("https://api.scryfall.com/cards/named?fuzzy=" + encodeURIComponent(cardName));
-      }
+  let identifiers = cardNames.map(function(c) {
+    return { name: c.name };
+  });
 
-      let card = await response.json();
+  let response = await fetch("https://api.scryfall.com/cards/collection", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifiers: identifiers })
+  });
 
-      if (card.object === "error") {
-        console.log("Not found: " + cardName);
-        continue;
-      }
+  let data = await response.json();
 
-      let imageUri = card.image_uris
-        ? card.image_uris.normal
-        : card.card_faces[0].image_uris.normal;
+  data.data.forEach(function(card) {
+    let imageUri = card.image_uris
+      ? card.image_uris.normal
+      : card.card_faces[0].image_uris.normal;
 
-      collection.push({
-        name: card.name,
-        type: card.type_line,
-        image: imageUri,
-        deck: deckName
-      });
+    collection.push({
+      name: card.name,
+      type: card.type_line,
+      image: imageUri,
+      deck: deckName
+    });
+  });
 
-    } catch(e) {
-      console.log("Error on: " + cardName);
-    }
-
-    await new Promise(r => setTimeout(r, 200));
+  if (data.not_found && data.not_found.length > 0) {
+    console.log("Cards not found: ", data.not_found);
+    alert("Import complete! " + data.data.length + " cards added. " + data.not_found.length + " cards not found - check console for details.");
+  } else {
+    alert("Import complete! All " + data.data.length + " cards added to " + deckName + ".");
   }
 
   saveCollection();
   displayCards();
-  alert("Import complete! Added cards to " + deckName + ".");
 }
     </script>
   </body>
