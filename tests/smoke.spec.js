@@ -8,7 +8,7 @@ test("loads the collection page", async ({ page }) => {
   await expect(page.getByLabel("Deck name")).toBeVisible();
   await expect(page.getByRole("button", { name: "Add card" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Repair deck prints" })).toBeVisible();
-  await expect(page.locator("#filterNote")).toHaveText(/Showing all cards|No cards/i);
+  await expect(page.locator("#filterNote")).toHaveText(/Showing all (cards|decks)|No cards/i);
 });
 
 test("renders stored print metadata", async ({ page }) => {

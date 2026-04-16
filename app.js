@@ -1,43 +1,43 @@
 const STORAGE_KEY = "mtgCollection";
 
 const COMMANDER_DECKS = {
-  Atraxa: {
+  atraxa: {
     label: "Atraxa",
     colors: ["W", "U", "B", "G"]
   },
-  Merfolk: {
+  merfolk: {
     label: "Merfolk (Sygg)",
     colors: ["W", "U"]
   },
-  "Timey Wimey": {
+  "timey wimey": {
     label: "Timey Wimey (Tenth Doctor & Rose)",
     colors: ["W", "U", "R"]
   },
-  "Bumi Unleashed": {
+  "bumi unleashed": {
     label: "Bumi Unleashed",
     colors: ["R", "G"]
   },
-  "Counter Intelligence": {
+  "counter intelligence": {
     label: "Counter Intelligence (Inspirit)",
     colors: ["W", "U", "R"]
   },
-  Chishiro: {
+  chishiro: {
     label: "Chishiro",
     colors: ["R", "G"]
   },
-  "Ashling Flame Dancer": {
+  "ashling flame dancer": {
     label: "Ashling Flame Dancer",
     colors: ["R"]
   },
-  "Play for Free": {
+  "play for free": {
     label: "Play for Free (Ellie and Alan)",
     colors: ["W", "U", "G"]
   },
-  "Food and Fellowship": {
+  "food and fellowship": {
     label: "Food and Fellowship (Frodo & Sam)",
     colors: ["W", "B", "G"]
   },
-  "Shalai and Hallar": {
+  "shalai and hallar": {
     label: "Shalai and Hallar",
     colors: ["W", "R", "G"]
   }
@@ -79,15 +79,24 @@ const COLOR_NAMES = {
 const elements = {};
 let collection = loadCollection();
 let statusMessageTimeout;
+let currentView = "decks";
 
 document.addEventListener("DOMContentLoaded", function() {
   cacheElements();
   bindEvents();
+  setCurrentViewFromHash();
   populateCommanderFilter();
   populateDeckFilter();
   displayCards();
   refreshMissingColorIdentities();
 });
+
+function setCurrentViewFromHash() {
+  const hash = window.location.hash.substring(1);
+  currentView = hash === "boxes" ? "boxes" : "decks";
+  updateNavActive();
+  document.title = currentView === "boxes" ? "Collection Boxes - My MTG Collection" : "Decks - My MTG Collection";
+}
 
 function cacheElements() {
   elements.cardCount = document.getElementById("cardCount");
@@ -110,6 +119,9 @@ function cacheElements() {
   elements.repairPrintsButton = document.getElementById("repairPrintsButton");
   elements.exportCollectionButton = document.getElementById("exportCollectionButton");
   elements.importCollectionButton = document.getElementById("importCollectionButton");
+  elements.decksLink = document.getElementById("decksLink");
+  elements.boxesLink = document.getElementById("boxesLink");
+  elements.headerText = document.getElementById("headerText");
 }
 
 function bindEvents() {
@@ -121,6 +133,18 @@ function bindEvents() {
   elements.repairPrintsButton.addEventListener("click", repairDeckPrints);
   elements.exportCollectionButton.addEventListener("click", exportCollection);
   elements.importCollectionButton.addEventListener("click", importCollectionBackup);
+  window.addEventListener("hashchange", handleHashChange);
+}
+
+function handleHashChange() {
+  setCurrentViewFromHash();
+  populateDeckFilter();
+  displayCards();
+}
+
+function updateNavActive() {
+  elements.decksLink.classList.toggle("active", currentView === "decks");
+  elements.boxesLink.classList.toggle("active", currentView === "boxes");
 }
 
 function loadCollection() {
@@ -140,7 +164,7 @@ function saveCollection() {
 function normalizeStoredCard(card) {
   return {
     ...card,
-    deck: normalizeDeckName(card.deck || "Unsorted"),
+    deck: normalizeDeckName(card.deck || "unsorted"),
     colorIdentity: Array.isArray(card.colorIdentity) ? card.colorIdentity : [],
     set: typeof card.set === "string" ? card.set.toLowerCase() : "",
     collectorNumber: typeof card.collectorNumber === "string" ? card.collectorNumber : "",
@@ -151,19 +175,24 @@ function normalizeStoredCard(card) {
 function normalizeDeckName(deckName) {
   let trimmedName = (deckName || "").trim();
   if (!trimmedName) {
-    return "Unsorted";
+    return "unsorted";
   }
 
   let aliasKey = trimmedName.toLowerCase();
   if (DECK_NAME_ALIASES[aliasKey]) {
-    return DECK_NAME_ALIASES[aliasKey];
+    return DECK_NAME_ALIASES[aliasKey].toLowerCase();
   }
 
   let matchedAlias = Object.keys(DECK_NAME_ALIASES).find(function(alias) {
     return aliasKey.includes(alias);
   });
 
-  return matchedAlias ? DECK_NAME_ALIASES[matchedAlias] : trimmedName;
+  return matchedAlias ? DECK_NAME_ALIASES[matchedAlias].toLowerCase() : trimmedName.toLowerCase();
+}
+
+function isBoxOrBinder(deckName) {
+  let lowerName = deckName.toLowerCase();
+  return lowerName.includes("box") || lowerName.includes("binder");
 }
 
 function populateCommanderFilter() {
@@ -189,17 +218,26 @@ function populateCommanderFilter() {
 
 function populateDeckFilter() {
   let selectedValue = elements.deckFilter.value;
-  let deckNames = Array.from(new Set(collection.map(function(card) {
-    return normalizeDeckName(card.deck || "Unsorted");
+  let allDeckNames = Array.from(new Set(collection.map(function(card) {
+    return normalizeDeckName(card.deck || "unsorted");
   }))).sort(function(a, b) {
     return a.localeCompare(b);
+  });
+
+  let deckNames = allDeckNames.filter(function(deckName) {
+    if (currentView === "decks") {
+      return !isBoxOrBinder(deckName);
+    } else if (currentView === "boxes") {
+      return isBoxOrBinder(deckName);
+    }
+    return true;
   });
 
   elements.deckFilter.innerHTML = "";
 
   let allOption = document.createElement("option");
   allOption.value = "";
-  allOption.textContent = "All decks";
+  allOption.textContent = currentView === "boxes" ? "All boxes" : "All decks";
   elements.deckFilter.appendChild(allOption);
 
   deckNames.forEach(function(deckName) {
@@ -222,7 +260,11 @@ function escapeHtml(value) {
 }
 
 function getDeckDisplayLabel(deckName) {
-  return COMMANDER_DECKS[deckName] ? COMMANDER_DECKS[deckName].label : deckName;
+  if (COMMANDER_DECKS[deckName]) {
+    return COMMANDER_DECKS[deckName].label;
+  }
+  // Title case the deckName
+  return deckName.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
 }
 
 function showStatusMessage(message) {
@@ -291,7 +333,7 @@ function isCardLegalForCommander(card, commanderName) {
 }
 
 function getDeckLegality(card) {
-  let deckName = normalizeDeckName(card.deck || "Unsorted");
+  let deckName = normalizeDeckName(card.deck || "unsorted");
   let hasKnownCommander = Boolean(COMMANDER_DECKS[deckName]);
 
   if (!hasKnownCommander) {
@@ -327,12 +369,26 @@ function displayCards() {
   } else if (selectedDeck) {
     elements.filterNote.textContent = "Showing cards in " + getDeckDisplayLabel(selectedDeck) + ".";
   } else {
-    elements.filterNote.textContent = "Showing all cards.";
+    elements.filterNote.textContent = currentView === "boxes" ? "Showing all boxes and binders." : "Showing all decks.";
   }
 
-  let decks = {};
+  let viewTotal = collection.filter(function(card) {
+    let deckName = normalizeDeckName(card.deck || "unsorted");
+    if (currentView === "decks") {
+      return !isBoxOrBinder(deckName);
+    } else if (currentView === "boxes") {
+      return isBoxOrBinder(deckName);
+    }
+    return true;
+  }).length;
+
+  let filteredCards = [];
   collection.forEach(function(card, index) {
-    let deckName = normalizeDeckName(card.deck || "Unsorted");
+    let deckName = normalizeDeckName(card.deck || "unsorted");
+
+    if (currentView === "decks" && isBoxOrBinder(deckName)) {
+      return;
+    }
 
     if (selectedDeck && deckName !== selectedDeck) {
       return;
@@ -351,16 +407,31 @@ function displayCards() {
       }
     }
 
-    visibleCount += 1;
-    if (!decks[deckName]) {
-      decks[deckName] = [];
-    }
-    decks[deckName].push({ card: card, index: index });
+    filteredCards.push({ card: card, index: index, deckName: deckName });
   });
 
+  let decks = {};
+  filteredCards.forEach(function(entry) {
+    if (!decks[entry.deckName]) {
+      decks[entry.deckName] = [];
+    }
+    decks[entry.deckName].push(entry);
+  });
+
+  if (currentView === "boxes") {
+    // For boxes view, ensure "Collection" for any non-box cards, but since we filtered, all are boxes
+    // If no boxes, show "Collection" with all
+    if (Object.keys(decks).length === 0) {
+      decks["Collection"] = [];
+    }
+  }
+
   let deckNames = Object.keys(decks);
-  let countLabel = selectedCommander || selectedDeck ? visibleCount + " of " + collection.length : collection.length;
-  elements.cardCount.textContent = countLabel;
+  let countLabel = selectedCommander || selectedDeck ? visibleCount + " of " + viewTotal : viewTotal;
+  // elements.cardCount.textContent = countLabel;
+
+  let collectionText = currentView === "boxes" ? "in your boxes" : "in your decks";
+  elements.headerText.innerHTML = `Commander card tracker — <span id="cardCount">${countLabel}</span> cards ${collectionText}`;
 
   if (searchQuery) {
     elements.filterNote.textContent += " " + visibleCount + " cards found.";
@@ -371,7 +442,7 @@ function displayCards() {
     emptyState.className = "empty-state";
     emptyState.textContent = selectedCommander || selectedDeck || searchQuery
       ? "No cards match the current filters."
-      : "No cards in your collection yet.";
+      : currentView === "boxes" ? "No boxes or binders in your collection yet." : "No cards in your decks yet.";
     elements.cardGrid.appendChild(emptyState);
     return;
   }
@@ -391,7 +462,7 @@ function displayCards() {
 
     let deckHeader = document.createElement("h2");
     deckHeader.className = "deck-heading";
-    deckHeader.textContent = deckName + " (" + decks[deckName].length + " cards)";
+    deckHeader.textContent = getDeckDisplayLabel(deckName) + " (" + decks[deckName].length + " cards)";
     deckSection.appendChild(deckHeader);
 
     if (COMMANDER_DECKS[deckName]) {
@@ -419,7 +490,7 @@ function displayCards() {
       let deckInputId = getDeckInputId(index);
       let safeCardName = escapeHtml(card.name);
       let safeTypeLine = escapeHtml(card.type || "");
-      let safeDeckName = escapeHtml(card.deck || "Unsorted");
+      let safeDeckName = escapeHtml(card.deck || "unsorted");
       let safeImage = escapeHtml(card.image || "");
 
       newCard.className = legality.checked && !legality.legal ? "card card-illegal" : "card";
@@ -561,7 +632,7 @@ function updateCardDeck(index) {
   }
 
   let nextDeckName = normalizeDeckName(input.value);
-  let previousDeckName = collection[index].deck || "Unsorted";
+  let previousDeckName = collection[index].deck || "unsorted";
   collection[index].deck = nextDeckName;
   saveCollection();
   populateDeckFilter();
@@ -571,8 +642,8 @@ function updateCardDeck(index) {
 
 function parseDeckLine(line) {
   let cleanedLine = line.replace(/\*F\*/g, "").replace(/\[.*?\]/g, "").trim();
-  let exactPrintMatch = cleanedLine.match(/^(\d+)x?\s+(.+?)\s+\(([a-zA-Z0-9]+)\)\s+([a-zA-Z0-9-]+)$/);
-  let fallbackMatch = cleanedLine.match(/^(\d+)x?\s+(.+?)\s+\(([a-zA-Z0-9]+)\)$/);
+  let exactPrintMatch = cleanedLine.match(/^(\d+)x?\s+(.+?)\s+\(([a-zA-Z0-9]+)\)\s+([a-zA-Z0-9-]+)\s*(.*)$/);
+  let fallbackMatch = cleanedLine.match(/^(\d+)x?\s+(.+?)\s+\(([a-zA-Z0-9]+)\)\s*(.*)$/);
 
   if (!exactPrintMatch && !fallbackMatch) {
     return null;

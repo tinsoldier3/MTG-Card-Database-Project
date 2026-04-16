@@ -10,7 +10,11 @@
     <main class="app-shell">
       <header class="page-header">
         <h1>My MTG Collection</h1>
-        <p>Commander card tracker — <span id="cardCount">0</span> cards in your collection</p>
+        <nav class="main-nav">
+          <a href="#decks" class="nav-link active" id="decksLink">Decks</a>
+          <a href="#boxes" class="nav-link" id="boxesLink">Collection Boxes</a>
+        </nav>
+        <p id="headerText">Commander card tracker — <span id="cardCount">0</span> cards in your collection</p>
       </header>
 
       <section class="search-section">
@@ -30,47 +34,56 @@
       </section>
 
       <section class="controls">
-        <div class="field-group">
-          <label for="cardInput">Card name</label>
-          <input type="text" id="cardInput" placeholder="Card name..." />
-        </div>
+        <div class="control-group">
+          <h3>Add Cards</h3>
+          <div class="field-group">
+            <label for="cardInput">Card name</label>
+            <input type="text" id="cardInput" placeholder="Card name..." />
+          </div>
 
-        <div class="field-group">
-          <label for="deckInput">Deck name</label>
-          <input type="text" id="deckInput" list="deckOptions" placeholder="Deck name (e.g. Atraxa)..." />
-          <datalist id="deckOptions"></datalist>
-          <p class="hint-text">Choose a saved commander name or type your own deck label.</p>
-        </div>
+          <div class="field-group">
+            <label for="deckInput">Deck name</label>
+            <input type="text" id="deckInput" list="deckOptions" placeholder="Deck name (e.g. Atraxa)..." />
+            <datalist id="deckOptions"></datalist>
+            <p class="hint-text">Choose a saved commander name or type your own deck label.</p>
+          </div>
 
-        <div class="field-group">
-          <label for="fileInput">Deck file</label>
-          <input type="file" id="fileInput" accept=".txt" />
-        </div>
-
-        <div class="field-group">
-          <label for="collectionImportInput">Collection backup</label>
-          <input type="file" id="collectionImportInput" accept=".json" />
-          <p class="hint-text">Import a previously exported collection backup.</p>
-        </div>
-
-        <div class="field-group">
-          <label for="commanderFilter">Commander legality filter</label>
-          <select id="commanderFilter"></select>
-        </div>
-
-        <div class="field-group">
-          <label for="deckFilter">Deck filter</label>
-          <select id="deckFilter"></select>
-        </div>
-
-        <div class="field-group">
-          <label>Actions</label>
           <div class="action-row">
             <button id="addCardButton" type="button">Add card</button>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <h3>Import & Export</h3>
+          <div class="field-group">
+            <label for="fileInput">Deck file</label>
+            <input type="file" id="fileInput" accept=".txt" />
+          </div>
+
+          <div class="field-group">
+            <label for="collectionImportInput">Collection backup</label>
+            <input type="file" id="collectionImportInput" accept=".json" />
+            <p class="hint-text">Import a previously exported collection backup.</p>
+          </div>
+
+          <div class="action-row">
             <button id="importDeckButton" type="button">Import deck</button>
             <button id="repairPrintsButton" type="button">Repair deck prints</button>
             <button id="exportCollectionButton" type="button">Export collection</button>
             <button id="importCollectionButton" type="button">Import backup</button>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <h3>Filters</h3>
+          <div class="field-group">
+            <label for="commanderFilter">Commander legality filter</label>
+            <select id="commanderFilter"></select>
+          </div>
+
+          <div class="field-group">
+            <label for="deckFilter">Deck filter</label>
+            <select id="deckFilter"></select>
           </div>
         </div>
       </section>
