@@ -461,7 +461,7 @@ function displayCards() {
   // elements.cardCount.textContent = countLabel;
 
   let collectionText = currentView === "boxes" ? "in your boxes" : "in your decks";
-  elements.headerText.innerHTML = `Commander card tracker — <span id="cardCount">${countLabel}</span> cards ${collectionText}`;
+  elements.headerText.innerHTML = `<span id="cardCount">${countLabel}</span> cards ${collectionText}`;
 
   if (searchQuery) {
     elements.filterNote.textContent += " " + visibleCount + " cards found.";
