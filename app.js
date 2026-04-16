@@ -149,6 +149,7 @@ function cacheElements() {
   elements.boxesLink = document.getElementById("boxesLink");
   elements.headerText = document.getElementById("headerText");
   elements.themeToggle = document.getElementById("themeToggle");
+  elements.sortSelect = document.getElementById("sortSelect");
 }
 
 function bindEvents() {
@@ -162,6 +163,7 @@ function bindEvents() {
   elements.importCollectionButton.addEventListener("click", importCollectionBackup);
   window.addEventListener("hashchange", handleHashChange);
   elements.themeToggle.addEventListener("click", toggleTheme);
+  elements.sortSelect.addEventListener("change", displayCards);
 }
 
 function handleHashChange() {
@@ -525,9 +527,33 @@ if (searchQuery) {
     deckGrid.className = "card-grid";
     deckSection.appendChild(deckGrid);
 
-    decks[deckName].sort(function(a, b) {
-      return a.card.name.localeCompare(b.card.name);
-    });
+    let sortMode = elements.sortSelect.value;
+
+decks[deckName].sort(function(a, b) {
+  let cardA = a.card;
+  let cardB = b.card;
+
+  switch (sortMode) {
+    case "type":
+      return (cardA.type || "").localeCompare(cardB.type || "");
+
+    case "color":
+      return (cardA.colorIdentity.join("") || "")
+        .localeCompare(cardB.colorIdentity.join("") || "");
+
+    case "set":
+      return (cardA.set || "").localeCompare(cardB.set || "");
+
+    case "collector":
+      return (cardA.collectorNumber || "")
+        .localeCompare(cardB.collectorNumber || "", undefined, { numeric: true });
+
+    case "name":
+    default:
+      return cardA.name.localeCompare(cardB.name);
+  }
+});
+
 
     decks[deckName].forEach(function(entry) {
       let card = entry.card;
