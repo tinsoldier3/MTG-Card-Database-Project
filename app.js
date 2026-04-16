@@ -107,6 +107,7 @@ function cacheElements() {
   elements.statusMessage = document.getElementById("statusMessage");
   elements.addCardButton = document.getElementById("addCardButton");
   elements.importDeckButton = document.getElementById("importDeckButton");
+  elements.repairPrintsButton = document.getElementById("repairPrintsButton");
   elements.exportCollectionButton = document.getElementById("exportCollectionButton");
   elements.importCollectionButton = document.getElementById("importCollectionButton");
 }
@@ -117,6 +118,7 @@ function bindEvents() {
   elements.deckFilter.addEventListener("change", displayCards);
   elements.addCardButton.addEventListener("click", addCard);
   elements.importDeckButton.addEventListener("click", importDeck);
+  elements.repairPrintsButton.addEventListener("click", repairDeckPrints);
   elements.exportCollectionButton.addEventListener("click", exportCollection);
   elements.importCollectionButton.addEventListener("click", importCollectionBackup);
 }
@@ -231,6 +233,24 @@ function showStatusMessage(message) {
   statusMessageTimeout = setTimeout(function() {
     elements.statusMessage.classList.add("hidden");
   }, 2500);
+}
+
+function showProgress(message) {
+  elements.progressContainer.classList.remove("hidden");
+  elements.progressBar.style.width = "0%";
+  elements.progressText.textContent = message;
+}
+
+function updateProgress(current, total, message) {
+  let percent = total > 0 ? Math.round((current / total) * 100) : 0;
+  elements.progressBar.style.width = percent + "%";
+  elements.progressText.textContent = message;
+}
+
+function hideProgress(delay) {
+  setTimeout(function() {
+    elements.progressContainer.classList.add("hidden");
+  }, delay || 0);
 }
 
 function getColorIdentityLabel(colors) {
@@ -476,6 +496,21 @@ function createStoredCard(card, overrides) {
   });
 }
 
+function applyCardPrinting(existingCard, fetchedCard, overrides) {
+  return normalizeStoredCard({
+    ...existingCard,
+    name: fetchedCard.name,
+    type: fetchedCard.type_line,
+    image: getCardImageUri(fetchedCard),
+    deck: overrides.deck || existingCard.deck,
+    foil: typeof overrides.foil === "boolean" ? overrides.foil : existingCard.foil,
+    colorIdentity: fetchedCard.color_identity || existingCard.colorIdentity || [],
+    set: fetchedCard.set || overrides.set || existingCard.set || "",
+    collectorNumber: fetchedCard.collector_number || overrides.collectorNumber || existingCard.collectorNumber || "",
+    scryfallId: fetchedCard.id || existingCard.scryfallId || ""
+  });
+}
+
 async function addCard() {
   let cardName = elements.cardInput.value.trim();
   let deckName = normalizeDeckName(elements.deckInput.value);
@@ -561,6 +596,47 @@ function parseDeckLine(line) {
   };
 }
 
+function parseDeckFileText(text) {
+  let lines = text.split("\n");
+  let inMaybeboard = false;
+  let identifiers = [];
+
+  lines.forEach(function(line) {
+    let trimmed = line.trim();
+    if (trimmed.startsWith("// MAYBEBOARD")) {
+      inMaybeboard = true;
+    }
+
+    if (
+      trimmed === ""
+      || trimmed.startsWith("// ")
+      || trimmed.startsWith("//")
+      || inMaybeboard
+      || line.includes("{noDeck}")
+    ) {
+      return;
+    }
+
+    let isFoil = line.includes("*F*");
+    let parsedLine = parseDeckLine(line);
+    if (!parsedLine) {
+      return;
+    }
+
+    for (let i = 0; i < parsedLine.quantity; i += 1) {
+      identifiers.push({
+        name: parsedLine.cardName,
+        set: parsedLine.set,
+        collector_number: parsedLine.collectorNumber,
+        foil: isFoil,
+        matched: false
+      });
+    }
+  });
+
+  return identifiers;
+}
+
 function findMatchingIdentifier(card, identifiers) {
   let exactIndex = identifiers.findIndex(function(identifier) {
     return !identifier.matched
@@ -585,6 +661,85 @@ function findMatchingIdentifier(card, identifiers) {
   }
 
   return null;
+}
+
+function findCollectionMatchIndex(deckCards, identifier) {
+  let exactIndex = deckCards.findIndex(function(entry) {
+    return !entry.matched
+      && entry.card.name === identifier.name
+      && entry.card.set === identifier.set
+      && entry.card.collectorNumber === identifier.collector_number;
+  });
+
+  if (exactIndex >= 0) {
+    deckCards[exactIndex].matched = true;
+    return exactIndex;
+  }
+
+  let nameIndex = deckCards.findIndex(function(entry) {
+    return !entry.matched && entry.card.name === identifier.name;
+  });
+
+  if (nameIndex >= 0) {
+    deckCards[nameIndex].matched = true;
+    return nameIndex;
+  }
+
+  return -1;
+}
+
+async function fetchCardsByIdentifiers(identifiers, progressLabel) {
+  let chunks = [];
+  let allCards = [];
+  let notFound = [];
+  let processed = 0;
+
+  for (let i = 0; i < identifiers.length; i += 75) {
+    chunks.push(identifiers.slice(i, i + 75));
+  }
+
+  showProgress(progressLabel + " 0 of " + identifiers.length + " cards...");
+
+  for (let index = 0; index < chunks.length; index += 1) {
+    let chunk = chunks[index];
+    let response = await fetch("https://api.scryfall.com/cards/collection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        identifiers: chunk.map(function(identifier) {
+          return {
+            name: identifier.name,
+            set: identifier.set,
+            collector_number: identifier.collector_number
+          };
+        })
+      })
+    });
+
+    let data = await response.json();
+    (data.data || []).forEach(function(card) {
+      allCards.push({
+        card: card,
+        identifier: findMatchingIdentifier(card, chunk)
+      });
+    });
+
+    if (data.not_found) {
+      notFound = notFound.concat(data.not_found);
+    }
+
+    processed += chunk.length;
+    updateProgress(processed, identifiers.length, progressLabel + " " + processed + " of " + identifiers.length + " cards...");
+
+    await new Promise(function(resolve) {
+      setTimeout(resolve, 200);
+    });
+  }
+
+  return {
+    allCards: allCards,
+    notFound: notFound
+  };
 }
 
 async function refreshMissingColorIdentities() {
@@ -658,104 +813,17 @@ async function importDeck() {
   }
 
   let text = await file.text();
-  let lines = text.split("\n");
-
-  let inMaybeboard = false;
-  let cardLines = lines.filter(function(line) {
-    let trimmed = line.trim();
-    if (trimmed.startsWith("// MAYBEBOARD")) {
-      inMaybeboard = true;
-    }
-    if (trimmed === "" || trimmed.startsWith("// ")) {
-      return false;
-    }
-    if (trimmed.startsWith("//")) {
-      return false;
-    }
-    if (inMaybeboard) {
-      return false;
-    }
-    return true;
-  });
-
-  let identifiers = [];
-  cardLines.forEach(function(line) {
-    if (line.includes("{noDeck}")) {
-      return;
-    }
-
-    let isFoil = line.includes("*F*");
-    let parsedLine = parseDeckLine(line);
-    if (!parsedLine) {
-      return;
-    }
-
-    for (let i = 0; i < parsedLine.quantity; i += 1) {
-      identifiers.push({
-        name: parsedLine.cardName,
-        set: parsedLine.set,
-        collector_number: parsedLine.collectorNumber,
-        foil: isFoil
-      });
-    }
-  });
+  let identifiers = parseDeckFileText(text);
 
   if (identifiers.length === 0) {
     alert("No card lines were found in that deck file.");
     return;
   }
 
-  let chunks = [];
-  for (let i = 0; i < identifiers.length; i += 75) {
-    chunks.push(identifiers.slice(i, i + 75));
-  }
-
-  elements.progressContainer.classList.remove("hidden");
-  elements.progressBar.style.width = "0%";
-  elements.progressText.textContent = "Starting import of " + identifiers.length + " cards into " + deckName + "...";
-
-  let allCards = [];
-  let notFound = [];
-  let processed = 0;
-
   try {
-    for (let index = 0; index < chunks.length; index += 1) {
-      let chunk = chunks[index];
-      let response = await fetch("https://api.scryfall.com/cards/collection", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          identifiers: chunk.map(function(identifier) {
-            return {
-              name: identifier.name,
-              set: identifier.set,
-              collector_number: identifier.collector_number
-            };
-          })
-        })
-      });
-
-      let data = await response.json();
-      (data.data || []).forEach(function(card) {
-        allCards.push({
-          card: card,
-          identifier: findMatchingIdentifier(card, chunk)
-        });
-      });
-
-      if (data.not_found) {
-        notFound = notFound.concat(data.not_found);
-      }
-
-      processed += chunk.length;
-      let percent = Math.round((processed / identifiers.length) * 100);
-      elements.progressBar.style.width = percent + "%";
-      elements.progressText.textContent = "Imported " + processed + " of " + identifiers.length + " cards...";
-
-      await new Promise(function(resolve) {
-        setTimeout(resolve, 200);
-      });
-    }
+    let result = await fetchCardsByIdentifiers(identifiers, "Importing");
+    let allCards = result.allCards;
+    let notFound = result.notFound;
 
     allCards.forEach(function(entry) {
       collection.push(createStoredCard(entry.card, {
@@ -784,9 +852,101 @@ async function importDeck() {
     alert("Deck import failed. Please try again.");
   }
 
-  setTimeout(function() {
-    elements.progressContainer.classList.add("hidden");
-  }, 3000);
+  hideProgress(3000);
+}
+
+async function repairDeckPrints() {
+  let deckName = normalizeDeckName(elements.deckInput.value);
+
+  if (!deckName) {
+    alert("Please type a deck name before repairing prints.");
+    return;
+  }
+
+  let file = elements.fileInput.files[0];
+  if (!file) {
+    alert("Please select the deck txt file used for this deck first.");
+    return;
+  }
+
+  let deckCards = collection
+    .map(function(card, index) {
+      return {
+        card: card,
+        index: index,
+        matched: false
+      };
+    })
+    .filter(function(entry) {
+      return normalizeDeckName(entry.card.deck) === deckName;
+    });
+
+  if (deckCards.length === 0) {
+    alert("There are no saved cards in that deck yet.");
+    return;
+  }
+
+  let text = await file.text();
+  let identifiers = parseDeckFileText(text);
+
+  if (identifiers.length === 0) {
+    alert("No card lines were found in that deck file.");
+    return;
+  }
+
+  try {
+    let result = await fetchCardsByIdentifiers(identifiers, "Repairing prints for");
+    let allCards = result.allCards;
+    let updatedCount = 0;
+    let unmatchedDeckCards = 0;
+
+    allCards.forEach(function(entry) {
+      if (!entry.identifier) {
+        return;
+      }
+
+      let collectionMatchIndex = findCollectionMatchIndex(deckCards, entry.identifier);
+      if (collectionMatchIndex < 0) {
+        return;
+      }
+
+      let match = deckCards[collectionMatchIndex];
+      collection[match.index] = applyCardPrinting(match.card, entry.card, {
+        deck: deckName,
+        foil: entry.identifier.foil,
+        set: entry.identifier.set,
+        collectorNumber: entry.identifier.collector_number
+      });
+      updatedCount += 1;
+    });
+
+    unmatchedDeckCards = deckCards.filter(function(entry) {
+      return !entry.matched;
+    }).length;
+
+    saveCollection();
+    populateDeckFilter();
+    displayCards();
+
+    elements.progressText.textContent = "Repair complete! Updated " + updatedCount + " cards in " + getDeckDisplayLabel(deckName) + ".";
+    elements.progressBar.style.width = "100%";
+
+    if (unmatchedDeckCards > 0 || result.notFound.length > 0) {
+      showStatusMessage(
+        "Updated " + updatedCount
+        + " cards. "
+        + unmatchedDeckCards + " saved cards could not be matched, "
+        + result.notFound.length + " deck entries were not found."
+      );
+    } else {
+      showStatusMessage("Updated " + updatedCount + " cards to their intended printings.");
+    }
+  } catch (error) {
+    console.error("Unable to repair deck prints.", error);
+    alert("Repairing deck prints failed. Please try again.");
+  }
+
+  hideProgress(3000);
 }
 
 function exportCollection() {
