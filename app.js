@@ -83,6 +83,7 @@ let currentView = "decks";
 
 document.addEventListener("DOMContentLoaded", function() {
   cacheElements();
+  initializeTheme();
   bindEvents();
   setCurrentViewFromHash();
   populateCommanderFilter();
@@ -98,6 +99,29 @@ function setCurrentViewFromHash() {
   document.title = currentView === "boxes" ? "Collection Boxes - My MTG Collection" : "Decks - My MTG Collection";
 }
 
+function initializeTheme() {
+  let savedTheme = localStorage.getItem("theme") || "light";
+  setTheme(savedTheme);
+}
+
+function setTheme(theme) {
+  if (theme === "dark") {
+    document.documentElement.classList.add("dark-mode");
+    elements.themeToggle.textContent = "☀️";
+    localStorage.setItem("theme", "dark");
+  } else {
+    document.documentElement.classList.remove("dark-mode");
+    elements.themeToggle.textContent = "🌙";
+    localStorage.setItem("theme", "light");
+  }
+}
+
+function toggleTheme() {
+  let currentTheme = document.documentElement.classList.contains("dark-mode") ? "dark" : "light";
+  let newTheme = currentTheme === "dark" ? "light" : "dark";
+  setTheme(newTheme);
+}
+
 function cacheElements() {
   elements.cardCount = document.getElementById("cardCount");
   elements.searchInput = document.getElementById("searchInput");
@@ -106,6 +130,8 @@ function cacheElements() {
   elements.progressText = document.getElementById("progressText");
   elements.progressBar = document.getElementById("progressBar");
   elements.cardInput = document.getElementById("cardInput");
+  elements.quantityInput = document.getElementById("quantityInput");
+  elements.foilInput = document.getElementById("foilInput");
   elements.deckInput = document.getElementById("deckInput");
   elements.fileInput = document.getElementById("fileInput");
   elements.collectionImportInput = document.getElementById("collectionImportInput");
@@ -122,6 +148,7 @@ function cacheElements() {
   elements.decksLink = document.getElementById("decksLink");
   elements.boxesLink = document.getElementById("boxesLink");
   elements.headerText = document.getElementById("headerText");
+  elements.themeToggle = document.getElementById("themeToggle");
 }
 
 function bindEvents() {
@@ -134,6 +161,7 @@ function bindEvents() {
   elements.exportCollectionButton.addEventListener("click", exportCollection);
   elements.importCollectionButton.addEventListener("click", importCollectionBackup);
   window.addEventListener("hashchange", handleHashChange);
+  elements.themeToggle.addEventListener("click", toggleTheme);
 }
 
 function handleHashChange() {
@@ -165,6 +193,8 @@ function normalizeStoredCard(card) {
   return {
     ...card,
     deck: normalizeDeckName(card.deck || "unsorted"),
+    foil: Boolean(card.foil),
+    quantity: card.quantity || 1,
     colorIdentity: Array.isArray(card.colorIdentity) ? card.colorIdentity : [],
     set: typeof card.set === "string" ? card.set.toLowerCase() : "",
     collectorNumber: typeof card.collectorNumber === "string" ? card.collectorNumber : "",
@@ -496,7 +526,8 @@ function displayCards() {
       newCard.className = legality.checked && !legality.legal ? "card card-illegal" : "card";
       newCard.innerHTML = [
         '<img src="' + safeImage + '" alt="' + safeCardName + ' card image" />',
-        '<div class="card-name">' + safeCardName + '</div>',
+        '<div class="card-name">' + safeCardName + (card.quantity && card.quantity > 1 ? ' <span class="card-qty">(' + card.quantity + 'x)</span>' : '') + '</div>',
+        (card.foil ? '<div class="card-foil">✨ Foil</div>' : ''),
         '<div class="card-type">' + safeTypeLine + '</div>',
         getPrintLabel(card) ? '<div class="card-print">Print: ' + escapeHtml(getPrintLabel(card)) + '</div>' : "",
         '<div class="card-colors">Color identity: ' + getColorIdentityLabel(card.colorIdentity) + '</div>',
@@ -560,6 +591,7 @@ function createStoredCard(card, overrides) {
     image: getCardImageUri(card),
     deck: overrides.deck,
     foil: Boolean(overrides.foil),
+    quantity: overrides.quantity || 1,
     colorIdentity: card.color_identity || [],
     set: card.set || overrides.set || "",
     collectorNumber: card.collector_number || overrides.collectorNumber || "",
@@ -585,6 +617,8 @@ function applyCardPrinting(existingCard, fetchedCard, overrides) {
 async function addCard() {
   let cardName = elements.cardInput.value.trim();
   let deckName = normalizeDeckName(elements.deckInput.value);
+  let quantity = parseInt(elements.quantityInput.value, 10) || 1;
+  let foil = elements.foilInput.checked;
 
   if (!cardName) {
     alert("Please type a card name first!");
@@ -593,19 +627,41 @@ async function addCard() {
 
   try {
     let card = await fetchNamedCard(cardName);
-
-    collection.push({
-      ...createStoredCard(card, {
-        deck: deckName,
-        foil: false
-      })
+    
+    // Check for existing card with same name and deck
+    let existingIndex = collection.findIndex(function(c) {
+      return normalizeDeckName(c.deck || "unsorted") === deckName && 
+             c.name === card.name &&
+             c.foil === foil;
     });
 
-    saveCollection();
-    populateDeckFilter();
-    displayCards();
+    if (existingIndex !== -1) {
+      // Add quantity to existing card instead of creating duplicate
+      collection[existingIndex].quantity = (collection[existingIndex].quantity || 1) + quantity;
+      saveCollection();
+      populateDeckFilter();
+      displayCards();
+      showStatusMessage(quantity + "x " + card.name + " added (now " + collection[existingIndex].quantity + " total).");
+    } else {
+      // Add new card
+      collection.push({
+        ...createStoredCard(card, {
+          deck: deckName,
+          foil: foil,
+          quantity: quantity
+        })
+      });
+
+      saveCollection();
+      populateDeckFilter();
+      displayCards();
+      showStatusMessage(quantity + "x " + card.name + " added to " + getDeckDisplayLabel(deckName) + ".");
+    }
+
     elements.cardInput.value = "";
-    showStatusMessage(card.name + " added to " + getDeckDisplayLabel(deckName) + ".");
+    elements.quantityInput.value = "1";
+    elements.foilInput.checked = false;
+    elements.cardInput.focus();
 
     if (COMMANDER_DECKS[deckName]) {
       elements.commanderFilter.value = deckName;
