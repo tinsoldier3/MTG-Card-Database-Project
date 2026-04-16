@@ -438,6 +438,7 @@ function displayCards() {
     }
 
     filteredCards.push({ card: card, index: index, deckName: deckName });
+    visibleCount++;
   });
 
   let decks = {};
@@ -457,15 +458,31 @@ function displayCards() {
   }
 
   let deckNames = Object.keys(decks);
-  let countLabel = selectedCommander || selectedDeck ? visibleCount + " of " + viewTotal : viewTotal;
+  let countLabel;
+
+if (searchQuery) {
+  // Searching: show only the number of matches
+  countLabel = `${visibleCount} of ${viewTotal}`;
+} else if (selectedCommander || selectedDeck) {
+  // Filtering by deck or commander
+  countLabel = `${visibleCount} of ${viewTotal}`;
+} else {
+  // No filters: show total cards
+  countLabel = viewTotal;
+}
+
   // elements.cardCount.textContent = countLabel;
 
   let collectionText = currentView === "boxes" ? "in your boxes" : "in your decks";
-  elements.headerText.innerHTML = `<span id="cardCount">${countLabel}</span> cards ${collectionText}`;
+  elements.headerText.innerHTML = `
+  <span id="cardCount">${countLabel}</span> cards ${collectionText}
+`;
+
 
   if (searchQuery) {
-    elements.filterNote.textContent += " " + visibleCount + " cards found.";
-  }
+  elements.filterNote.textContent = `Showing results for "${searchQuery}". ${visibleCount} cards found.`;
+}
+
 
   if (deckNames.length === 0) {
     let emptyState = document.createElement("p");
