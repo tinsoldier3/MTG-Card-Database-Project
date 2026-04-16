@@ -76,6 +76,12 @@ body {
   font-size: 14px;
 }
 
+.card-print {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #6a5731;
+}
+
 .controls {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

@@ -139,7 +139,10 @@ function normalizeStoredCard(card) {
   return {
     ...card,
     deck: normalizeDeckName(card.deck || "Unsorted"),
-    colorIdentity: Array.isArray(card.colorIdentity) ? card.colorIdentity : []
+    colorIdentity: Array.isArray(card.colorIdentity) ? card.colorIdentity : [],
+    set: typeof card.set === "string" ? card.set.toLowerCase() : "",
+    collectorNumber: typeof card.collectorNumber === "string" ? card.collectorNumber : "",
+    scryfallId: typeof card.scryfallId === "string" ? card.scryfallId : ""
   };
 }
 
@@ -238,6 +241,17 @@ function getColorIdentityLabel(colors) {
   return colors.map(function(color) {
     return COLOR_NAMES[color] || color;
   }).join(", ");
+}
+
+function getPrintLabel(card) {
+  if (!card.set) {
+    return "";
+  }
+
+  let setLabel = card.set.toUpperCase();
+  return card.collectorNumber
+    ? setLabel + " #" + card.collectorNumber
+    : setLabel;
 }
 
 function isCardLegalForCommander(card, commanderName) {
@@ -393,6 +407,7 @@ function displayCards() {
         '<img src="' + safeImage + '" alt="' + safeCardName + ' card image" />',
         '<div class="card-name">' + safeCardName + '</div>',
         '<div class="card-type">' + safeTypeLine + '</div>',
+        getPrintLabel(card) ? '<div class="card-print">Print: ' + escapeHtml(getPrintLabel(card)) + '</div>' : "",
         '<div class="card-colors">Color identity: ' + getColorIdentityLabel(card.colorIdentity) + '</div>',
         legality.checked && !legality.legal ? '<div class="status-badge illegal">Illegal for this deck</div>' : "",
         '<div class="card-controls">',
@@ -447,6 +462,20 @@ function getCardImageUri(card) {
   return "";
 }
 
+function createStoredCard(card, overrides) {
+  return normalizeStoredCard({
+    name: card.name,
+    type: card.type_line,
+    image: getCardImageUri(card),
+    deck: overrides.deck,
+    foil: Boolean(overrides.foil),
+    colorIdentity: card.color_identity || [],
+    set: card.set || overrides.set || "",
+    collectorNumber: card.collector_number || overrides.collectorNumber || "",
+    scryfallId: card.id || ""
+  });
+}
+
 async function addCard() {
   let cardName = elements.cardInput.value.trim();
   let deckName = normalizeDeckName(elements.deckInput.value);
@@ -460,11 +489,10 @@ async function addCard() {
     let card = await fetchNamedCard(cardName);
 
     collection.push({
-      name: card.name,
-      type: card.type_line,
-      image: getCardImageUri(card),
-      deck: deckName,
-      colorIdentity: card.color_identity || []
+      ...createStoredCard(card, {
+        deck: deckName,
+        foil: false
+      })
     });
 
     saveCollection();
@@ -504,6 +532,59 @@ function updateCardDeck(index) {
   populateDeckFilter();
   displayCards();
   showStatusMessage(collection[index].name + " moved from " + getDeckDisplayLabel(previousDeckName) + " to " + getDeckDisplayLabel(nextDeckName) + ".");
+}
+
+function parseDeckLine(line) {
+  let cleanedLine = line.replace(/\*F\*/g, "").replace(/\[.*?\]/g, "").trim();
+  let exactPrintMatch = cleanedLine.match(/^(\d+)x?\s+(.+?)\s+\(([a-zA-Z0-9]+)\)\s+([a-zA-Z0-9-]+)$/);
+  let fallbackMatch = cleanedLine.match(/^(\d+)x?\s+(.+?)\s+\(([a-zA-Z0-9]+)\)$/);
+
+  if (!exactPrintMatch && !fallbackMatch) {
+    return null;
+  }
+
+  let match = exactPrintMatch || fallbackMatch;
+  let quantity = parseInt(match[1], 10);
+  let cardName = match[2].trim();
+  let setCode = match[3].toLowerCase();
+  let collectorNumber = exactPrintMatch ? match[4] : "";
+
+  if (cardName.includes(" // ")) {
+    cardName = cardName.split(" // ")[0].trim();
+  }
+
+  return {
+    quantity: quantity,
+    cardName: cardName,
+    set: setCode,
+    collectorNumber: collectorNumber
+  };
+}
+
+function findMatchingIdentifier(card, identifiers) {
+  let exactIndex = identifiers.findIndex(function(identifier) {
+    return !identifier.matched
+      && identifier.set
+      && identifier.collector_number
+      && identifier.set === card.set
+      && identifier.collector_number === card.collector_number;
+  });
+
+  if (exactIndex >= 0) {
+    identifiers[exactIndex].matched = true;
+    return identifiers[exactIndex];
+  }
+
+  let fallbackIndex = identifiers.findIndex(function(identifier) {
+    return !identifier.matched && identifier.name === card.name;
+  });
+
+  if (fallbackIndex >= 0) {
+    identifiers[fallbackIndex].matched = true;
+    return identifiers[fallbackIndex];
+  }
+
+  return null;
 }
 
 async function refreshMissingColorIdentities() {
@@ -604,20 +685,18 @@ async function importDeck() {
     }
 
     let isFoil = line.includes("*F*");
-    let cleaned = line.replace(/\*F\*/g, "").replace(/\[.*?\]/g, "").trim();
-    let match = cleaned.match(/^(\d+)x?\s+(.+?)\s+\([a-zA-Z0-9]+\)/);
-    if (!match) {
+    let parsedLine = parseDeckLine(line);
+    if (!parsedLine) {
       return;
     }
 
-    let quantity = parseInt(match[1], 10);
-    let cardName = match[2].trim();
-    if (cardName.includes(" // ")) {
-      cardName = cardName.split(" // ")[0].trim();
-    }
-
-    for (let i = 0; i < quantity; i += 1) {
-      identifiers.push({ name: cardName, foil: isFoil });
+    for (let i = 0; i < parsedLine.quantity; i += 1) {
+      identifiers.push({
+        name: parsedLine.cardName,
+        set: parsedLine.set,
+        collector_number: parsedLine.collectorNumber,
+        foil: isFoil
+      });
     }
   });
 
@@ -645,11 +724,24 @@ async function importDeck() {
       let response = await fetch("https://api.scryfall.com/cards/collection", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifiers: chunk })
+        body: JSON.stringify({
+          identifiers: chunk.map(function(identifier) {
+            return {
+              name: identifier.name,
+              set: identifier.set,
+              collector_number: identifier.collector_number
+            };
+          })
+        })
       });
 
       let data = await response.json();
-      allCards = allCards.concat(data.data || []);
+      (data.data || []).forEach(function(card) {
+        allCards.push({
+          card: card,
+          identifier: findMatchingIdentifier(card, chunk)
+        });
+      });
 
       if (data.not_found) {
         notFound = notFound.concat(data.not_found);
@@ -665,19 +757,13 @@ async function importDeck() {
       });
     }
 
-    allCards.forEach(function(card) {
-      let identifier = identifiers.find(function(id) {
-        return id.name === card.name;
-      });
-
-      collection.push({
-        name: card.name,
-        type: card.type_line,
-        image: getCardImageUri(card),
+    allCards.forEach(function(entry) {
+      collection.push(createStoredCard(entry.card, {
         deck: deckName,
-        foil: identifier ? identifier.foil : false,
-        colorIdentity: card.color_identity || []
-      });
+        foil: entry.identifier ? entry.identifier.foil : false,
+        set: entry.identifier ? entry.identifier.set : "",
+        collectorNumber: entry.identifier ? entry.identifier.collector_number : ""
+      }));
     });
 
     elements.progressText.textContent = notFound.length > 0

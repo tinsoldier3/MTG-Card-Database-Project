@@ -1,0 +1,26 @@
+{
+  "name": "mtg-card-database-project",
+  "version": "1.0.0",
+  "description": "This project is a personal Magic: The Gathering collection tracker focused on Commander decks. The app lets you add cards, import decklists, organize cards by deck, and flag cards that fall outside a commander's color identity.",
+  "main": "app.js",
+  "scripts": {
+    "serve:test": "python3 -m http.server 4173",
+    "test": "playwright test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tinsoldier3/MTG-Card-Database-Project.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/tinsoldier3/MTG-Card-Database-Project/issues"
+  },
+  "homepage": "https://github.com/tinsoldier3/MTG-Card-Database-Project#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "playwright": "^1.59.1"
+  }
+}
