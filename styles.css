@@ -5,15 +5,15 @@
 /* ========================= */
 
 :root {
-  --bg: #dcdcdc;        /* stone tabletop */
-  --panel: #e5e5e5;     /* lighter stone panel */
-  --text: #000000;      /* readable black text */
-  --accent: #c8a96f;    /* MTG gold */
-  --border: #888888;    /* soft stone border */
-  --shadow: rgba(0,0,0,0.25);
+  --bg: #ece6d9;        /* warm parchment */
+  --panel: #f7f3eb;     /* lifted cream panel */
+  --text: #1e1508;      /* dark warm brown — not harsh like pure black */
+  --accent: #a87c2a;    /* richer gold — reads better on light */
+  --border: #ccc0a4;    /* warm tan border */
+  --shadow: rgba(0,0,0,0.10);
 
   --illegal: #b33a3a;
-  --foil-glow: rgba(255,255,255,0.6);
+  --foil-glow: rgba(200, 160, 80, 0.5);
 }
 
 .dark-mode {
@@ -171,7 +171,7 @@ html, body {
 
 .card:hover {
   transform: scale(1.03);
-  box-shadow: 0 0 18px rgba(255,255,255,0.15);
+  box-shadow: 0 4px 20px var(--shadow);
 }
 
 .card img {

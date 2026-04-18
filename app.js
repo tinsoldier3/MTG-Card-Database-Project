@@ -3,43 +3,68 @@ const STORAGE_KEY = "mtgCollection";
 const COMMANDER_DECKS = {
   atraxa: {
     label: "Atraxa",
-    colors: ["W", "U", "B", "G"]
+    colors: ["W", "U", "B", "G"],
+    commander: ["Atraxa, Praetors' Voice"]
   },
   merfolk: {
     label: "Merfolk (Sygg)",
-    colors: ["W", "U"]
+    colors: ["W", "U"],
+    commander: ["Sygg, Wanderwine Wisdom"]
   },
   "timey wimey": {
     label: "Timey Wimey (Tenth Doctor & Rose)",
-    colors: ["W", "U", "R"]
+    colors: ["W", "U", "R"],
+    commander: ["Rose Tyler", "The Tenth Doctor"]
   },
   "bumi unleashed": {
     label: "Bumi Unleashed",
-    colors: ["R", "G"]
+    colors: ["R", "G"],
+    commander: ["Bumi, Unleashed"]
   },
   "counter intelligence": {
     label: "Counter Intelligence (Inspirit)",
-    colors: ["W", "U", "R"]
+    colors: ["W", "U", "R"],
+    commander: ["Inspirit, Flagship Vessel"]
   },
   chishiro: {
     label: "Chishiro",
-    colors: ["R", "G"]
+    colors: ["R", "G"],
+    commander: ["Chishiro, the Shattered Blade"]
   },
   "ashling flame dancer": {
     label: "Ashling Flame Dancer",
-    colors: ["R"]
+    colors: ["R"],
+    commander: ["Ashling, Flame Dancer"]
   },
   "play for free": {
     label: "Play for Free (Ellie and Alan)",
-    colors: ["W", "U", "G"]
+    colors: ["W", "U", "G"],
+    commander: ["Ellie and Alan, Paleontologists"]
   },
   "food and fellowship": {
     label: "Food and Fellowship (Frodo & Sam)",
-    colors: ["W", "B", "G"]
+    colors: ["W", "B", "G"],
+    commander: ["Frodo, Adventurous Hobbit", "Sam, Loyal Attendant"]
   },
-  "shalai and hallar": {
-    label: "Shalai and Hallar",
-    colors: ["W", "R", "G"]
+  painbow: {
+    label: "Painbow (Jared Carthalion)",
+    colors: ["W", "U", "B", "R", "G"],
+    commander: ["Jared Carthalion"]
+  },
+  "exit from exile - wolves": {
+    label: "Exit From Exile - Wolves (Faldorn)",
+    colors: ["R", "G"],
+    commander: ["Faldorn, Dread Wolf Herald"]
+  },
+  vampires: {
+    label: "Vampires (Anhelo)",
+    colors: ["U", "B", "R"],
+    commander: ["Anhelo, the Painter"]
+  },
+  "1/1 counter deck": {
+    label: "1/1 Counter Deck (Shalai and Hallar)",
+    colors: ["W", "R", "G"],
+    commander: ["Shalai and Hallar"]
   }
 };
 
@@ -50,6 +75,7 @@ const DECK_NAME_ALIASES = {
   "merfolk (sygg)": "Merfolk",
   sygg: "Merfolk",
   "timey wimey": "Timey Wimey",
+  "timey-wimey": "Timey Wimey",
   "timey wimey (tenth doctor & rose)": "Timey Wimey",
   "tenth doctor & rose": "Timey Wimey",
   "bumi unleashed": "Bumi Unleashed",
@@ -65,7 +91,15 @@ const DECK_NAME_ALIASES = {
   "food and fellowship": "Food and Fellowship",
   "food and fellowship (frodo & sam)": "Food and Fellowship",
   "frodo & sam": "Food and Fellowship",
-  "shalai and hallar": "Shalai and Hallar"
+  painbow: "Painbow",
+  "jared carthalion": "Painbow",
+  "exit from exile - wolves": "Exit From Exile - Wolves",
+  "exit from exile": "Exit From Exile - Wolves",
+  faldorn: "Exit From Exile - Wolves",
+  vampires: "Vampires",
+  anhelo: "Vampires",
+  "maestro's massacre": "Vampires",
+  "1/1 counter deck": "1/1 Counter Deck"
 };
 
 const COLOR_NAMES = {
@@ -422,6 +456,10 @@ function displayCards() {
       return;
     }
 
+    if (currentView === "boxes" && !isBoxOrBinder(deckName)) {
+      return;
+    }
+
     if (selectedDeck && deckName !== selectedDeck) {
       return;
     }
@@ -529,9 +567,17 @@ if (searchQuery) {
 
     let sortMode = elements.sortSelect.value;
 
+let deckCommanders = (COMMANDER_DECKS[deckName] && COMMANDER_DECKS[deckName].commander) || [];
+
 decks[deckName].sort(function(a, b) {
   let cardA = a.card;
   let cardB = b.card;
+
+  let aIsCommander = deckCommanders.includes(cardA.name);
+  let bIsCommander = deckCommanders.includes(cardB.name);
+  if (aIsCommander !== bIsCommander) {
+    return aIsCommander ? -1 : 1;
+  }
 
   switch (sortMode) {
     case "type":
