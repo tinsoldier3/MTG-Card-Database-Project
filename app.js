@@ -175,9 +175,10 @@ function cacheElements() {
   elements.filterNote = document.getElementById("filterNote");
   elements.statusMessage = document.getElementById("statusMessage");
   elements.addCardButton = document.getElementById("addCardButton");
-  elements.importDeckButton = document.getElementById("importDeckButton");
   elements.repairPrintsButton = document.getElementById("repairPrintsButton");
   elements.exportCollectionButton = document.getElementById("exportCollectionButton");
+  elements.importDeckReplaceButton = document.getElementById("importDeckReplaceButton");
+  elements.importDeckMergeButton = document.getElementById("importDeckMergeButton");
   elements.importCollectionButton = document.getElementById("importCollectionButton");
   elements.decksLink = document.getElementById("decksLink");
   elements.boxesLink = document.getElementById("boxesLink");
@@ -191,9 +192,10 @@ function bindEvents() {
   elements.commanderFilter.addEventListener("change", displayCards);
   elements.deckFilter.addEventListener("change", displayCards);
   elements.addCardButton.addEventListener("click", addCard);
-  elements.importDeckButton.addEventListener("click", importDeck);
   elements.repairPrintsButton.addEventListener("click", repairDeckPrints);
   elements.exportCollectionButton.addEventListener("click", exportCollection);
+  elements.importDeckReplaceButton.addEventListener("click", () => importDeck("replace"));
+  elements.importDeckMergeButton.addEventListener("click", () => importDeck("merge"));
   elements.importCollectionButton.addEventListener("click", importCollectionBackup);
   window.addEventListener("hashchange", handleHashChange);
   elements.themeToggle.addEventListener("click", toggleTheme);
@@ -1013,7 +1015,7 @@ async function refreshMissingColorIdentities() {
   displayCards();
 }
 
-async function importDeck() {
+async function importDeck(mode) {
   let deckName = normalizeDeckName(elements.deckInput.value);
 
   if (!deckName) {
@@ -1041,13 +1043,32 @@ async function importDeck() {
     let allCards = result.allCards;
     let notFound = result.notFound;
 
+    if (mode === "replace") {
+      collection = collection.filter(c => normalizeDeckName(c.deck || "unsorted") !== deckName);
+    }
+
     allCards.forEach(function(entry) {
-      collection.push(createStoredCard(entry.card, {
+      let newCard = createStoredCard(entry.card, {
         deck: deckName,
         foil: entry.identifier ? entry.identifier.foil : false,
         set: entry.identifier ? entry.identifier.set : "",
         collectorNumber: entry.identifier ? entry.identifier.collector_number : ""
-      }));
+      });
+
+      if (mode === "merge") {
+        let existingIndex = collection.findIndex(c =>
+          normalizeDeckName(c.deck || "unsorted") === deckName &&
+          c.name === newCard.name &&
+          c.foil === newCard.foil
+        );
+        if (existingIndex !== -1) {
+          collection[existingIndex] = newCard;
+        } else {
+          collection.push(newCard);
+        }
+      } else {
+        collection.push(newCard);
+      }
     });
 
     elements.progressText.textContent = notFound.length > 0
