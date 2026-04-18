@@ -144,7 +144,8 @@ function cacheElements() {
   elements.importDeckButton = document.getElementById("importDeckButton");
   elements.repairPrintsButton = document.getElementById("repairPrintsButton");
   elements.exportCollectionButton = document.getElementById("exportCollectionButton");
-  elements.importCollectionButton = document.getElementById("importCollectionButton");
+  elements.importCollectionReplaceButton = document.getElementById("importCollectionReplaceButton");
+  elements.importCollectionMergeButton = document.getElementById("importCollectionMergeButton");
   elements.decksLink = document.getElementById("decksLink");
   elements.boxesLink = document.getElementById("boxesLink");
   elements.headerText = document.getElementById("headerText");
@@ -160,7 +161,8 @@ function bindEvents() {
   elements.importDeckButton.addEventListener("click", importDeck);
   elements.repairPrintsButton.addEventListener("click", repairDeckPrints);
   elements.exportCollectionButton.addEventListener("click", exportCollection);
-  elements.importCollectionButton.addEventListener("click", importCollectionBackup);
+  elements.importCollectionReplaceButton.addEventListener("click", () => importCollectionBackup("replace"));
+  elements.importCollectionMergeButton.addEventListener("click", () => importCollectionBackup("merge"));
   window.addEventListener("hashchange", handleHashChange);
   elements.themeToggle.addEventListener("click", toggleTheme);
   elements.sortSelect.addEventListener("change", displayCards);
@@ -1141,7 +1143,7 @@ function exportCollection() {
   showStatusMessage("Collection exported as a JSON backup.");
 }
 
-async function importCollectionBackup() {
+async function importCollectionBackup(mode) {
   let file = elements.collectionImportInput.files[0];
 
   if (!file) {
@@ -1158,12 +1160,33 @@ async function importCollectionBackup() {
       throw new Error("Invalid backup format.");
     }
 
-    collection = importedCards.map(normalizeStoredCard);
+    let normalized = importedCards.map(normalizeStoredCard);
+
+    if (mode === "merge") {
+      let merged = [...collection];
+      for (let imported of normalized) {
+        let existingIndex = merged.findIndex(c =>
+          normalizeDeckName(c.deck || "unsorted") === normalizeDeckName(imported.deck || "unsorted") &&
+          c.name === imported.name &&
+          c.foil === imported.foil
+        );
+        if (existingIndex !== -1) {
+          merged[existingIndex] = imported;
+        } else {
+          merged.push(imported);
+        }
+      }
+      collection = merged;
+      showStatusMessage("Collection merged successfully.");
+    } else {
+      collection = normalized;
+      showStatusMessage("Collection replaced successfully.");
+    }
+
     saveCollection();
     populateDeckFilter();
     displayCards();
     elements.collectionImportInput.value = "";
-    showStatusMessage("Collection backup imported successfully.");
   } catch (error) {
     console.error("Unable to import collection backup.", error);
     alert("That JSON backup could not be imported.");
