@@ -141,11 +141,11 @@ function cacheElements() {
   elements.filterNote = document.getElementById("filterNote");
   elements.statusMessage = document.getElementById("statusMessage");
   elements.addCardButton = document.getElementById("addCardButton");
-  elements.importDeckButton = document.getElementById("importDeckButton");
   elements.repairPrintsButton = document.getElementById("repairPrintsButton");
   elements.exportCollectionButton = document.getElementById("exportCollectionButton");
-  elements.importCollectionReplaceButton = document.getElementById("importCollectionReplaceButton");
-  elements.importCollectionMergeButton = document.getElementById("importCollectionMergeButton");
+  elements.importDeckReplaceButton = document.getElementById("importDeckReplaceButton");
+  elements.importDeckMergeButton = document.getElementById("importDeckMergeButton");
+  elements.importCollectionButton = document.getElementById("importCollectionButton");
   elements.decksLink = document.getElementById("decksLink");
   elements.boxesLink = document.getElementById("boxesLink");
   elements.headerText = document.getElementById("headerText");
@@ -158,11 +158,11 @@ function bindEvents() {
   elements.commanderFilter.addEventListener("change", displayCards);
   elements.deckFilter.addEventListener("change", displayCards);
   elements.addCardButton.addEventListener("click", addCard);
-  elements.importDeckButton.addEventListener("click", importDeck);
   elements.repairPrintsButton.addEventListener("click", repairDeckPrints);
   elements.exportCollectionButton.addEventListener("click", exportCollection);
-  elements.importCollectionReplaceButton.addEventListener("click", () => importCollectionBackup("replace"));
-  elements.importCollectionMergeButton.addEventListener("click", () => importCollectionBackup("merge"));
+  elements.importDeckReplaceButton.addEventListener("click", () => importDeck("replace"));
+  elements.importDeckMergeButton.addEventListener("click", () => importDeck("merge"));
+  elements.importCollectionButton.addEventListener("click", importCollectionBackup);
   window.addEventListener("hashchange", handleHashChange);
   elements.themeToggle.addEventListener("click", toggleTheme);
   elements.sortSelect.addEventListener("change", displayCards);
@@ -969,7 +969,7 @@ async function refreshMissingColorIdentities() {
   displayCards();
 }
 
-async function importDeck() {
+async function importDeck(mode) {
   let deckName = normalizeDeckName(elements.deckInput.value);
 
   if (!deckName) {
@@ -997,13 +997,32 @@ async function importDeck() {
     let allCards = result.allCards;
     let notFound = result.notFound;
 
+    if (mode === "replace") {
+      collection = collection.filter(c => normalizeDeckName(c.deck || "unsorted") !== deckName);
+    }
+
     allCards.forEach(function(entry) {
-      collection.push(createStoredCard(entry.card, {
+      let newCard = createStoredCard(entry.card, {
         deck: deckName,
         foil: entry.identifier ? entry.identifier.foil : false,
         set: entry.identifier ? entry.identifier.set : "",
         collectorNumber: entry.identifier ? entry.identifier.collector_number : ""
-      }));
+      });
+
+      if (mode === "merge") {
+        let existingIndex = collection.findIndex(c =>
+          normalizeDeckName(c.deck || "unsorted") === deckName &&
+          c.name === newCard.name &&
+          c.foil === newCard.foil
+        );
+        if (existingIndex !== -1) {
+          collection[existingIndex] = newCard;
+        } else {
+          collection.push(newCard);
+        }
+      } else {
+        collection.push(newCard);
+      }
     });
 
     elements.progressText.textContent = notFound.length > 0
@@ -1143,7 +1162,7 @@ function exportCollection() {
   showStatusMessage("Collection exported as a JSON backup.");
 }
 
-async function importCollectionBackup(mode) {
+async function importCollectionBackup() {
   let file = elements.collectionImportInput.files[0];
 
   if (!file) {
@@ -1160,33 +1179,12 @@ async function importCollectionBackup(mode) {
       throw new Error("Invalid backup format.");
     }
 
-    let normalized = importedCards.map(normalizeStoredCard);
-
-    if (mode === "merge") {
-      let merged = [...collection];
-      for (let imported of normalized) {
-        let existingIndex = merged.findIndex(c =>
-          normalizeDeckName(c.deck || "unsorted") === normalizeDeckName(imported.deck || "unsorted") &&
-          c.name === imported.name &&
-          c.foil === imported.foil
-        );
-        if (existingIndex !== -1) {
-          merged[existingIndex] = imported;
-        } else {
-          merged.push(imported);
-        }
-      }
-      collection = merged;
-      showStatusMessage("Collection merged successfully.");
-    } else {
-      collection = normalized;
-      showStatusMessage("Collection replaced successfully.");
-    }
-
+    collection = importedCards.map(normalizeStoredCard);
     saveCollection();
     populateDeckFilter();
     displayCards();
     elements.collectionImportInput.value = "";
+    showStatusMessage("Collection backup imported successfully.");
   } catch (error) {
     console.error("Unable to import collection backup.", error);
     alert("That JSON backup could not be imported.");
