@@ -114,6 +114,7 @@ const elements = {};
 let collection = loadCollection();
 let statusMessageTimeout;
 let currentView = "decks";
+let setNameCache = {};
 
 document.addEventListener("DOMContentLoaded", function() {
   cacheElements();
@@ -124,13 +125,63 @@ document.addEventListener("DOMContentLoaded", function() {
   populateDeckFilter();
   displayCards();
   refreshMissingColorIdentities();
+  loadSetNames();
 });
+
+async function loadSetNames() {
+  const CACHE_KEY = "mtgSetNames";
+  const CACHE_AGE_KEY = "mtgSetNamesAge";
+  const ONE_DAY = 86400000;
+
+  let cached = localStorage.getItem(CACHE_KEY);
+  let cacheAge = parseInt(localStorage.getItem(CACHE_AGE_KEY) || "0");
+
+  if (cached && Date.now() - cacheAge < ONE_DAY) {
+    setNameCache = JSON.parse(cached);
+    displayCards();
+    return;
+  }
+
+  try {
+    let response = await fetch("https://api.scryfall.com/sets");
+    let data = await response.json();
+    if (data.object === "list" && Array.isArray(data.data)) {
+      data.data.forEach(function(set) {
+        setNameCache[set.code.toLowerCase()] = set.name;
+      });
+      localStorage.setItem(CACHE_KEY, JSON.stringify(setNameCache));
+      localStorage.setItem(CACHE_AGE_KEY, String(Date.now()));
+      if (currentView === "sets") {
+        displayCards();
+      }
+    }
+  } catch (e) {
+    console.warn("Could not fetch set names from Scryfall.", e);
+  }
+}
+
+function getSetDisplayLabel(setCode) {
+  if (!setCode || setCode === "UNKNOWN") return "Unknown Set";
+  let name = setNameCache[setCode.toLowerCase()];
+  return name ? name + " (" + setCode.toUpperCase() + ")" : setCode.toUpperCase();
+}
 
 function setCurrentViewFromHash() {
   const hash = window.location.hash.substring(1);
-  currentView = hash === "boxes" ? "boxes" : "decks";
+  if (hash === "boxes") {
+    currentView = "boxes";
+  } else if (hash === "sets") {
+    currentView = "sets";
+  } else {
+    currentView = "decks";
+  }
   updateNavActive();
-  document.title = currentView === "boxes" ? "Collection Boxes - My MTG Collection" : "Decks - My MTG Collection";
+  const titles = {
+    boxes: "Collection Boxes - My MTG Collection",
+    sets: "By Set - My MTG Collection",
+    decks: "Decks - My MTG Collection"
+  };
+  document.title = titles[currentView];
 }
 
 function initializeTheme() {
@@ -182,6 +233,7 @@ function cacheElements() {
   elements.importCollectionButton = document.getElementById("importCollectionButton");
   elements.decksLink = document.getElementById("decksLink");
   elements.boxesLink = document.getElementById("boxesLink");
+  elements.setsLink = document.getElementById("setsLink");
   elements.headerText = document.getElementById("headerText");
   elements.themeToggle = document.getElementById("themeToggle");
   elements.sortSelect = document.getElementById("sortSelect");
@@ -211,6 +263,7 @@ function handleHashChange() {
 function updateNavActive() {
   elements.decksLink.classList.toggle("active", currentView === "decks");
   elements.boxesLink.classList.toggle("active", currentView === "boxes");
+  elements.setsLink.classList.toggle("active", currentView === "sets");
 }
 
 function loadCollection() {
@@ -305,7 +358,7 @@ function populateDeckFilter() {
 
   let allOption = document.createElement("option");
   allOption.value = "";
-  allOption.textContent = currentView === "boxes" ? "All boxes" : "All decks";
+  allOption.textContent = currentView === "boxes" ? "All boxes" : currentView === "sets" ? "All sources" : "All decks";
   elements.deckFilter.appendChild(allOption);
 
   deckNames.forEach(function(deckName) {
@@ -437,7 +490,13 @@ function displayCards() {
   } else if (selectedDeck) {
     elements.filterNote.textContent = "Showing cards in " + getDeckDisplayLabel(selectedDeck) + ".";
   } else {
-    elements.filterNote.textContent = currentView === "boxes" ? "Showing all boxes and binders." : "Showing all decks.";
+    if (currentView === "boxes") {
+      elements.filterNote.textContent = "Showing all boxes and binders.";
+    } else if (currentView === "sets") {
+      elements.filterNote.textContent = "Showing cards by set.";
+    } else {
+      elements.filterNote.textContent = "Showing all decks.";
+    }
   }
 
   let viewTotal = collection.filter(function(card) {
@@ -515,7 +574,7 @@ if (searchQuery) {
 
   // elements.cardCount.textContent = countLabel;
 
-  let collectionText = currentView === "boxes" ? "in your boxes" : "in your decks";
+  let collectionText = currentView === "boxes" ? "in your boxes" : currentView === "sets" ? "in your collection" : "in your decks";
   elements.headerText.innerHTML = `
   <span id="cardCount">${countLabel}</span> cards ${collectionText}
 `;
@@ -525,6 +584,92 @@ if (searchQuery) {
   elements.filterNote.textContent = `Showing results for "${searchQuery}". ${visibleCount} cards found.`;
 }
 
+
+  if (currentView === "sets") {
+    let sets = {};
+    filteredCards.forEach(function(entry) {
+      let setCode = (entry.card.set || "unknown").toUpperCase();
+      if (!sets[setCode]) sets[setCode] = [];
+      sets[setCode].push(entry);
+    });
+
+    let setNames = Object.keys(sets).sort();
+
+    if (setNames.length === 0) {
+      let emptyState = document.createElement("p");
+      emptyState.className = "empty-state";
+      emptyState.textContent = searchQuery || selectedDeck ? "No cards match the current filters." : "No cards in your collection yet.";
+      elements.cardGrid.appendChild(emptyState);
+      return;
+    }
+
+    let sortMode = elements.sortSelect.value;
+
+    setNames.forEach(function(setCode) {
+      let setSection = document.createElement("section");
+      setSection.className = "deck-section";
+
+      let setHeader = document.createElement("h2");
+      setHeader.className = "deck-heading";
+      setHeader.textContent = getSetDisplayLabel(setCode) + " — " + sets[setCode].length + " cards";
+      setSection.appendChild(setHeader);
+
+      let setGrid = document.createElement("div");
+      setGrid.className = "card-grid";
+      setSection.appendChild(setGrid);
+
+      sets[setCode].sort(function(a, b) {
+        let cardA = a.card;
+        let cardB = b.card;
+        switch (sortMode) {
+          case "type":
+            return (cardA.type || "").localeCompare(cardB.type || "");
+          case "color":
+            return (cardA.colorIdentity.join("") || "").localeCompare(cardB.colorIdentity.join("") || "");
+          case "set":
+          case "collector":
+            return (cardA.collectorNumber || "").localeCompare(cardB.collectorNumber || "", undefined, { numeric: true });
+          case "name":
+          default:
+            return cardA.name.localeCompare(cardB.name);
+        }
+      });
+
+      sets[setCode].forEach(function(entry) {
+        let card = entry.card;
+        let index = entry.index;
+        let newCard = document.createElement("div");
+        let deckInputId = getDeckInputId(index);
+        let safeCardName = escapeHtml(card.name);
+        let safeTypeLine = escapeHtml(card.type || "");
+        let safeDeckName = escapeHtml(card.deck || "unsorted");
+        let safeImage = escapeHtml(card.image || "");
+        let deckDisplayLabel = getDeckDisplayLabel(normalizeDeckName(card.deck || "unsorted"));
+
+        newCard.className = "card";
+        newCard.innerHTML = [
+          '<img src="' + safeImage + '" alt="' + safeCardName + ' card image" />',
+          '<div class="card-name">' + safeCardName + (card.quantity && card.quantity > 1 ? ' <span class="card-qty">(' + card.quantity + 'x)</span>' : '') + '</div>',
+          (card.foil ? '<div class="card-foil">✨ Foil</div>' : ''),
+          '<div class="card-type">' + safeTypeLine + '</div>',
+          getPrintLabel(card) ? '<div class="card-print">Print: ' + escapeHtml(getPrintLabel(card)) + '</div>' : "",
+          '<div class="card-colors">Color identity: ' + getColorIdentityLabel(card.colorIdentity) + '</div>',
+          '<div class="card-deck-label">Location: ' + escapeHtml(deckDisplayLabel) + '</div>',
+          '<div class="card-controls">',
+          '<input type="text" id="' + deckInputId + '" list="deckOptions" value="' + safeDeckName + '" aria-label="Deck name for ' + safeCardName + '" />',
+          '<button type="button" data-action="move" data-index="' + index + '">Move to deck</button>',
+          '<button type="button" data-action="remove" data-index="' + index + '">Remove</button>',
+          "</div>"
+        ].join("");
+        setGrid.appendChild(newCard);
+      });
+
+      elements.cardGrid.appendChild(setSection);
+    });
+
+    bindCardActionButtons();
+    return;
+  }
 
   if (deckNames.length === 0) {
     let emptyState = document.createElement("p");
