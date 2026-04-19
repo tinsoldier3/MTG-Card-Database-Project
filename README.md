@@ -6,68 +6,78 @@ This project is a personal Magic: The Gathering collection tracker focused on Co
 
 Build a small but reliable collection app that is easy to maintain, easy to extend, and safe to keep using over time.
 
-## What "Done Next" Looks Like
-
-- Keep collection data persistent across sessions and devices.
-- Make the codebase easier to understand by separating HTML, CSS, and JavaScript.
-- Support importing real decklists and browsing the collection by deck.
-- Show Commander-specific legality issues clearly.
-- Create a solid base for a later move to a framework or backend if needed.
-
 ## Current State
 
-- Frontend-only app
-- Uses `localStorage` for in-browser persistence
+- Frontend-only app (no custom server)
+- **Supabase** backend for persistent, multi-device storage (Phase 2 complete)
+- Email/password authentication via Supabase Auth
+- Row-level security — each user only sees their own collection
 - Uses the Scryfall API to look up cards and deck imports
 - Supports deck filtering, search, and card movement between decks
-- Supports JSON backup export/import for more durable collection storage
+- Supports JSON backup export/import
+- Auto-migrates existing localStorage data to Supabase on first sign-in
 
 ## Project Structure
 
-- [index.html](/Users/cassidy/Documents/GitHub/MTG%20Card%20Database%20Project/index.html)
-- [styles.css](/Users/cassidy/Documents/GitHub/MTG%20Card%20Database%20Project/styles.css)
-- [app.js](/Users/cassidy/Documents/GitHub/MTG%20Card%20Database%20Project/app.js)
-
-## Persistence Plan
-
-The goal is for the collection to be durable and accessible from any device — not just the browser it was added in.
-
-### Current (Phase 1 — in place)
-
-1. `localStorage` keeps the collection in the browser between sessions.
-2. JSON export/import provides a manual backup so the data is not trapped in one browser.
-
-### Next (Phase 2 — planned)
-
-Migrate to **Supabase** as the backend database. Supabase is a hosted Postgres service with a simple JavaScript client — no server to manage, free tier is sufficient for a personal collection.
-
-The plan:
-
-1. Create a Supabase project and define a `cards` table (columns: `id`, `name`, `type`, `deck`, `foil`, `quantity`, `set`, `collector_number`, `scryfall_id`, `color_identity`, `image`, `created_at`).
-2. Replace `localStorage` reads/writes in `app.js` with Supabase client calls (`select`, `insert`, `update`, `delete`).
-3. Add a simple login (Supabase Auth supports email/password and magic links out of the box) so the collection is tied to a user account rather than a browser.
-4. Keep the JSON export feature as a manual backup option even after the migration.
-
-### Later (Phase 3 — future)
-
-- Track additional metadata: condition, acquisition date, purchase price, notes.
-- Automatic sync across devices without manual export/import.
-- Optionally migrate the frontend to Vite + Vue for a better developer experience once the backend is stable.
-
-## Next Iterations
-
-1. Set up Supabase project and schema.
-2. Replace `localStorage` with Supabase in `app.js`.
-3. Add Supabase Auth for user login.
-4. Add duplicate detection and quantity tracking instead of storing repeated copies as separate records.
-5. Improve deck import parsing for more decklist formats.
-6. Add tests around deck normalization, search, and Commander legality rules.
-7. Decide whether to stay lightweight or migrate to a framework like Vite + Vue.
+- [index.html](index.html)
+- [styles.css](styles.css)
+- [app.js](app.js)
 
 ## How To Run
 
-Open [index.html](/Users/cassidy/Documents/GitHub/MTG%20Card%20Database%20Project/index.html) in a browser.
+Open [index.html](index.html) in a browser. You will be prompted to sign in or create an account before accessing your collection.
 
-## Notes
+## Persistence
 
-This repo is intentionally staying simple for now. The immediate goal is to build a dependable foundation before adding a framework or backend. The Supabase migration is the single highest-leverage next step — it solves persistence and multi-device access in one move without requiring a custom server.
+### Phase 1 — Complete
+1. `localStorage` for in-browser persistence between sessions.
+2. JSON export/import for manual backups.
+
+### Phase 2 — Complete
+Supabase (hosted Postgres) replaces localStorage as the source of truth.
+
+- `cards` table stores the full collection, scoped per user via `user_id`
+- All writes go through targeted Supabase `upsert`/`delete` calls
+- Sign in with email/password; row-level security prevents cross-user access
+- JSON export remains available as a manual backup option
+- On first sign-in, any existing localStorage data is automatically migrated
+
+### Phase 3 — Future
+- Track additional metadata: condition, acquisition date, purchase price, notes
+- Optionally migrate the frontend to Vite + Vue once the backend is stable
+
+## What's Next
+
+1. **Password reset flow** — no "forgot password" UI yet; Supabase supports email-based reset out of the box.
+2. **Quantity editing in-place** — quantity only increases when re-adding a card; no way to set it to a specific number from the card grid.
+3. **Deck detail pages** — Archidekt-style per-deck overview using hash routing (planned, not started).
+4. **Duplicate detection on import** — cards are matched by name+foil during merge, but quantity stacking across repeated imports could be smarter.
+5. **Better auth error messaging** — surface Supabase validation errors (e.g. weak password) more clearly in the sign-up form.
+6. **Framework migration (optional)** — move to Vite + Vue once the data layer is stable.
+
+## Supabase Schema
+
+```sql
+create table cards (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  type text,
+  deck text,
+  foil boolean default false,
+  quantity integer default 1,
+  set text,
+  collector_number text,
+  scryfall_id text,
+  color_identity text[],
+  image text,
+  user_id uuid references auth.users(id) on delete cascade,
+  created_at timestamptz default now()
+);
+
+alter table cards enable row level security;
+
+create policy "Users can manage their own cards"
+  on cards for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+```
