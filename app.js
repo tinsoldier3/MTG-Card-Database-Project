@@ -1,4 +1,7 @@
 const STORAGE_KEY = "mtgCollection";
+const SUPABASE_URL = "https://sxilslbrrrxhysqthdre.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4aWxzbGJycnJ4aHlzcXRoZHJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1NTc3NzQsImV4cCI6MjA5MjEzMzc3NH0.vRPVR1H0TxBhnu9YRikxQ9nd48mxK8v0Z-bY-LBl5wU";
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const COMMANDER_DECKS = {
   atraxa: {
@@ -111,21 +114,35 @@ const COLOR_NAMES = {
 };
 
 const elements = {};
-let collection = loadCollection();
+let collection = [];
+let currentUserId = null;
 let statusMessageTimeout;
 let currentView = "decks";
 let setNameCache = {};
 
-document.addEventListener("DOMContentLoaded", function() {
+document.addEventListener("DOMContentLoaded", async function() {
   cacheElements();
   initializeTheme();
   bindEvents();
-  setCurrentViewFromHash();
-  populateCommanderFilter();
-  populateDeckFilter();
-  displayCards();
-  refreshMissingColorIdentities();
-  loadSetNames();
+
+  let { data: { session } } = await supabaseClient.auth.getSession();
+  if (session) {
+    currentUserId = session.user.id;
+    await initApp(session.user.email);
+  } else {
+    showAuthPanel();
+  }
+
+  supabaseClient.auth.onAuthStateChange(async function(event, session) {
+    if (event === "SIGNED_IN" && session) {
+      currentUserId = session.user.id;
+      await initApp(session.user.email);
+    } else if (event === "SIGNED_OUT") {
+      collection = [];
+      currentUserId = null;
+      showAuthPanel();
+    }
+  });
 });
 
 async function loadSetNames() {
@@ -237,6 +254,13 @@ function cacheElements() {
   elements.headerText = document.getElementById("headerText");
   elements.themeToggle = document.getElementById("themeToggle");
   elements.sortSelect = document.getElementById("sortSelect");
+  elements.signInButton = document.getElementById("signInButton");
+  elements.signUpButton = document.getElementById("signUpButton");
+  elements.signOutButton = document.getElementById("signOutButton");
+  elements.authEmail = document.getElementById("authEmail");
+  elements.authPassword = document.getElementById("authPassword");
+  elements.authMessage = document.getElementById("authMessage");
+  elements.userEmail = document.getElementById("userEmail");
 }
 
 function bindEvents() {
@@ -252,6 +276,12 @@ function bindEvents() {
   window.addEventListener("hashchange", handleHashChange);
   elements.themeToggle.addEventListener("click", toggleTheme);
   elements.sortSelect.addEventListener("change", displayCards);
+  elements.signInButton.addEventListener("click", signIn);
+  elements.signUpButton.addEventListener("click", signUp);
+  elements.signOutButton.addEventListener("click", signOut);
+  elements.authPassword.addEventListener("keydown", function(e) {
+    if (e.key === "Enter") signIn();
+  });
 }
 
 function handleHashChange() {
@@ -266,23 +296,23 @@ function updateNavActive() {
   elements.setsLink.classList.toggle("active", currentView === "sets");
 }
 
-function loadCollection() {
-  try {
-    let storedCollection = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-    return storedCollection.map(normalizeStoredCard);
-  } catch (error) {
-    console.error("Unable to load collection from storage.", error);
+async function loadCollection() {
+  let { data, error } = await supabaseClient.from("cards").select("*");
+  if (error) {
+    console.error("Unable to load collection.", error);
     return [];
   }
+  return (data || []).map(rowToCard);
 }
 
 function saveCollection() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(collection));
+  // Replaced by targeted Supabase operations — kept as no-op for safety
 }
 
 function normalizeStoredCard(card) {
   return {
     ...card,
+    id: card.id || crypto.randomUUID(),
     deck: normalizeDeckName(card.deck || "unsorted"),
     foil: Boolean(card.foil),
     quantity: card.quantity || 1,
@@ -873,22 +903,17 @@ async function addCard() {
 
     if (existingIndex !== -1) {
       // Add quantity to existing card instead of creating duplicate
-      collection[existingIndex].quantity = (collection[existingIndex].quantity || 1) + quantity;
-      saveCollection();
+      let updatedCard = { ...collection[existingIndex], quantity: (collection[existingIndex].quantity || 1) + quantity };
+      await dbUpsertCards([updatedCard]);
+      collection[existingIndex] = updatedCard;
       populateDeckFilter();
       displayCards();
-      showStatusMessage(quantity + "x " + card.name + " added (now " + collection[existingIndex].quantity + " total).");
+      showStatusMessage(quantity + "x " + card.name + " added (now " + updatedCard.quantity + " total).");
     } else {
       // Add new card
-      collection.push({
-        ...createStoredCard(card, {
-          deck: deckName,
-          foil: foil,
-          quantity: quantity
-        })
-      });
-
-      saveCollection();
+      let newCard = createStoredCard(card, { deck: deckName, foil: foil, quantity: quantity });
+      await dbUpsertCards([newCard]);
+      collection.push(newCard);
       populateDeckFilter();
       displayCards();
       showStatusMessage(quantity + "x " + card.name + " added to " + getDeckDisplayLabel(deckName) + ".");
@@ -908,28 +933,37 @@ async function addCard() {
   }
 }
 
-function removeCard(index) {
-  let removedCardName = collection[index].name;
-  collection.splice(index, 1);
-  saveCollection();
-  populateDeckFilter();
-  displayCards();
-  showStatusMessage(removedCardName + " removed.");
+async function removeCard(index) {
+  let card = collection[index];
+  try {
+    await dbDeleteCards([card.id]);
+    collection.splice(index, 1);
+    populateDeckFilter();
+    displayCards();
+    showStatusMessage(card.name + " removed.");
+  } catch (error) {
+    console.error("Could not remove card.", error);
+    alert("Could not remove card. Please try again.");
+  }
 }
 
-function updateCardDeck(index) {
+async function updateCardDeck(index) {
   let input = document.getElementById(getDeckInputId(index));
-  if (!input) {
-    return;
-  }
+  if (!input) return;
 
   let nextDeckName = normalizeDeckName(input.value);
   let previousDeckName = collection[index].deck || "unsorted";
-  collection[index].deck = nextDeckName;
-  saveCollection();
-  populateDeckFilter();
-  displayCards();
-  showStatusMessage(collection[index].name + " moved from " + getDeckDisplayLabel(previousDeckName) + " to " + getDeckDisplayLabel(nextDeckName) + ".");
+  let updatedCard = { ...collection[index], deck: nextDeckName };
+  try {
+    await dbUpsertCards([updatedCard]);
+    collection[index] = updatedCard;
+    populateDeckFilter();
+    displayCards();
+    showStatusMessage(updatedCard.name + " moved from " + getDeckDisplayLabel(previousDeckName) + " to " + getDeckDisplayLabel(nextDeckName) + ".");
+  } catch (error) {
+    console.error("Could not move card.", error);
+    alert("Could not move card. Please try again.");
+  }
 }
 
 function parseDeckLine(line) {
@@ -1139,23 +1173,24 @@ async function refreshMissingColorIdentities() {
         colorMap[card.name] = card.color_identity || [];
       });
 
+      let updatedCards = [];
       collection = collection.map(function(card) {
         if (colorMap[card.name]) {
-          return {
-            ...card,
-            colorIdentity: colorMap[card.name]
-          };
+          let updated = { ...card, colorIdentity: colorMap[card.name] };
+          updatedCards.push(updated);
+          return updated;
         }
-
         return card;
       });
+      if (updatedCards.length > 0) {
+        await dbUpsertCards(updatedCards);
+      }
     } catch (error) {
       console.error("Unable to refresh color identities.", error);
       return;
     }
   }
 
-  saveCollection();
   populateDeckFilter();
   displayCards();
 }
@@ -1189,9 +1224,14 @@ async function importDeck(mode) {
     let notFound = result.notFound;
 
     if (mode === "replace") {
+      let idsToDelete = collection
+        .filter(c => normalizeDeckName(c.deck || "unsorted") === deckName)
+        .map(c => c.id);
+      await dbDeleteCards(idsToDelete);
       collection = collection.filter(c => normalizeDeckName(c.deck || "unsorted") !== deckName);
     }
 
+    let toUpsert = [];
     allCards.forEach(function(entry) {
       let newCard = createStoredCard(entry.card, {
         deck: deckName,
@@ -1207,14 +1247,20 @@ async function importDeck(mode) {
           c.foil === newCard.foil
         );
         if (existingIndex !== -1) {
-          collection[existingIndex] = newCard;
+          let updatedCard = { ...newCard, id: collection[existingIndex].id };
+          collection[existingIndex] = updatedCard;
+          toUpsert.push(updatedCard);
         } else {
           collection.push(newCard);
+          toUpsert.push(newCard);
         }
       } else {
         collection.push(newCard);
+        toUpsert.push(newCard);
       }
     });
+
+    await dbUpsertCards(toUpsert);
 
     elements.progressText.textContent = notFound.length > 0
       ? "Import complete! " + allCards.length + " cards added. " + notFound.length + " not found."
@@ -1225,7 +1271,6 @@ async function importDeck(mode) {
       console.log("Cards not found:", notFound);
     }
 
-    saveCollection();
     populateDeckFilter();
     displayCards();
     showStatusMessage(allCards.length + " cards imported to " + getDeckDisplayLabel(deckName) + ".");
@@ -1281,6 +1326,7 @@ async function repairDeckPrints() {
     let allCards = result.allCards;
     let updatedCount = 0;
     let unmatchedDeckCards = 0;
+    let toUpsert = [];
 
     allCards.forEach(function(entry) {
       if (!entry.identifier) {
@@ -1293,12 +1339,14 @@ async function repairDeckPrints() {
       }
 
       let match = deckCards[collectionMatchIndex];
-      collection[match.index] = applyCardPrinting(match.card, entry.card, {
+      let updatedCard = applyCardPrinting(match.card, entry.card, {
         deck: deckName,
         foil: entry.identifier.foil,
         set: entry.identifier.set,
         collectorNumber: entry.identifier.collector_number
       });
+      collection[match.index] = updatedCard;
+      toUpsert.push(updatedCard);
       updatedCount += 1;
     });
 
@@ -1306,7 +1354,7 @@ async function repairDeckPrints() {
       return !entry.matched;
     }).length;
 
-    saveCollection();
+    await dbUpsertCards(toUpsert);
     populateDeckFilter();
     displayCards();
 
@@ -1370,8 +1418,11 @@ async function importCollectionBackup() {
       throw new Error("Invalid backup format.");
     }
 
-    collection = importedCards.map(normalizeStoredCard);
-    saveCollection();
+    let normalizedCards = importedCards.map(normalizeStoredCard);
+    let { error: deleteError } = await supabaseClient.from("cards").delete().eq("user_id", currentUserId);
+    if (deleteError) throw deleteError;
+    await dbUpsertCards(normalizedCards);
+    collection = normalizedCards;
     populateDeckFilter();
     displayCards();
     elements.collectionImportInput.value = "";
@@ -1380,4 +1431,146 @@ async function importCollectionBackup() {
     console.error("Unable to import collection backup.", error);
     alert("That JSON backup could not be imported.");
   }
+}
+
+// ========================= //
+// SUPABASE DB HELPERS       //
+// ========================= //
+
+function cardToRow(card) {
+  return {
+    id: card.id,
+    name: card.name,
+    type: card.type,
+    deck: card.deck,
+    foil: card.foil,
+    quantity: card.quantity || 1,
+    set: card.set,
+    collector_number: card.collectorNumber,
+    scryfall_id: card.scryfallId,
+    color_identity: card.colorIdentity,
+    image: card.image,
+    user_id: currentUserId
+  };
+}
+
+function rowToCard(row) {
+  return normalizeStoredCard({
+    id: row.id,
+    name: row.name,
+    type: row.type,
+    deck: row.deck,
+    foil: row.foil,
+    quantity: row.quantity,
+    set: row.set,
+    collectorNumber: row.collector_number,
+    scryfallId: row.scryfall_id,
+    colorIdentity: row.color_identity || [],
+    image: row.image
+  });
+}
+
+async function dbUpsertCards(cards) {
+  if (!cards.length) return;
+  let { error } = await supabaseClient
+    .from("cards")
+    .upsert(cards.map(cardToRow), { onConflict: "id" });
+  if (error) throw error;
+}
+
+async function dbDeleteCards(ids) {
+  if (!ids.length) return;
+  let { error } = await supabaseClient
+    .from("cards")
+    .delete()
+    .in("id", ids);
+  if (error) throw error;
+}
+
+// ========================= //
+// AUTH                      //
+// ========================= //
+
+function showAuthPanel() {
+  document.getElementById("authPanel").classList.remove("hidden");
+  document.getElementById("appShell").classList.add("hidden");
+}
+
+function hideAuthPanel() {
+  document.getElementById("authPanel").classList.add("hidden");
+  document.getElementById("appShell").classList.remove("hidden");
+}
+
+async function initApp(email) {
+  hideAuthPanel();
+  elements.userEmail.textContent = email || "";
+
+  collection = await loadCollection();
+
+  // Auto-migrate localStorage data on first sign-in if Supabase is empty
+  if (collection.length === 0) {
+    try {
+      let localRaw = localStorage.getItem(STORAGE_KEY);
+      if (localRaw) {
+        let localCards = JSON.parse(localRaw).map(normalizeStoredCard);
+        if (localCards.length > 0) {
+          await dbUpsertCards(localCards);
+          collection = localCards;
+          localStorage.removeItem(STORAGE_KEY);
+          showStatusMessage("Migrated " + localCards.length + " cards from local storage to Supabase.");
+        }
+      }
+    } catch (e) {
+      console.warn("Could not auto-migrate localStorage data.", e);
+    }
+  }
+
+  setCurrentViewFromHash();
+  populateCommanderFilter();
+  populateDeckFilter();
+  displayCards();
+  refreshMissingColorIdentities();
+  loadSetNames();
+}
+
+async function signIn() {
+  let email = elements.authEmail.value.trim();
+  let password = elements.authPassword.value;
+  elements.authMessage.classList.add("hidden");
+
+  let { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  if (error) {
+    elements.authMessage.textContent = error.message;
+    elements.authMessage.classList.remove("hidden");
+    elements.authMessage.style.color = "";
+    return;
+  }
+  currentUserId = data.user.id;
+  await initApp(data.user.email);
+}
+
+async function signUp() {
+  let email = elements.authEmail.value.trim();
+  let password = elements.authPassword.value;
+  elements.authMessage.classList.add("hidden");
+
+  let { data, error } = await supabaseClient.auth.signUp({ email, password });
+  if (error) {
+    elements.authMessage.textContent = error.message;
+    elements.authMessage.classList.remove("hidden");
+    elements.authMessage.style.color = "";
+    return;
+  }
+  if (data.user && !data.session) {
+    elements.authMessage.textContent = "Check your email to confirm your account.";
+    elements.authMessage.style.color = "green";
+    elements.authMessage.classList.remove("hidden");
+    return;
+  }
+  currentUserId = data.user.id;
+  await initApp(data.user.email);
+}
+
+async function signOut() {
+  await supabaseClient.auth.signOut();
 }
