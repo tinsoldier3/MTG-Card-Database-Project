@@ -24,6 +24,22 @@
           <button id="signUpButton" type="button">Create account</button>
         </div>
         <p id="authMessage" class="auth-message hidden"></p>
+        <button id="forgotPasswordButton" type="button" class="forgot-password-btn">Forgot password?</button>
+      </div>
+    </div>
+
+    <div id="resetPasswordPanel" class="auth-panel hidden">
+      <div class="auth-box">
+        <h2>Set New Password</h2>
+        <p>Enter a new password for your account.</p>
+        <div class="field-group">
+          <label for="newPasswordInput">New password</label>
+          <input type="password" id="newPasswordInput" placeholder="New password" autocomplete="new-password" />
+        </div>
+        <div class="auth-actions">
+          <button id="updatePasswordButton" type="button">Update password</button>
+        </div>
+        <p id="resetMessage" class="auth-message hidden"></p>
       </div>
     </div>
 

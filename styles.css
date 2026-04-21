@@ -428,6 +428,17 @@ button:hover {
   color: var(--illegal);
 }
 
+.forgot-password-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 13px;
+  padding: 8px 0 0;
+  cursor: pointer;
+  text-decoration: underline;
+  display: block;
+}
+
 /* ========================= */
 /* HEADER USER               */
 /* ========================= */
