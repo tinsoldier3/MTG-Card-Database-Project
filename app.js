@@ -699,7 +699,7 @@ if (searchQuery) {
         newCard.className = "card";
         newCard.innerHTML = [
           '<img src="' + safeImage + '" alt="' + safeCardName + ' card image" />',
-          '<div class="card-name">' + safeCardName + (card.quantity && card.quantity > 1 ? ' <span class="card-qty">(' + card.quantity + 'x)</span>' : '') + '</div>',
+          '<div class="card-name">' + safeCardName + '</div>',
           (card.foil ? '<div class="card-foil">✨ Foil</div>' : ''),
           '<div class="card-type">' + safeTypeLine + '</div>',
           getPrintLabel(card) ? '<div class="card-print">Print: ' + escapeHtml(getPrintLabel(card)) + '</div>' : "",
@@ -708,6 +708,8 @@ if (searchQuery) {
           '<div class="card-controls">',
           '<input type="text" id="' + deckInputId + '" list="deckOptions" value="' + safeDeckName + '" aria-label="Deck name for ' + safeCardName + '" />',
           '<button type="button" data-action="move" data-index="' + index + '">Move to deck</button>',
+          '<input type="number" class="qty-input" min="1" value="' + (card.quantity || 1) + '" aria-label="Quantity for ' + safeCardName + '" data-qty-index="' + index + '" />',
+          '<button type="button" data-action="set-qty" data-index="' + index + '">Set qty</button>',
           '<button type="button" data-action="remove" data-index="' + index + '">Remove</button>',
           "</div>"
         ].join("");
@@ -812,7 +814,7 @@ decks[deckName].sort(function(a, b) {
       newCard.className = legality.checked && !legality.legal ? "card card-illegal" : "card";
       newCard.innerHTML = [
         '<img src="' + safeImage + '" alt="' + safeCardName + ' card image" />',
-        '<div class="card-name">' + safeCardName + (card.quantity && card.quantity > 1 ? ' <span class="card-qty">(' + card.quantity + 'x)</span>' : '') + '</div>',
+        '<div class="card-name">' + safeCardName + '</div>',
         (card.foil ? '<div class="card-foil">✨ Foil</div>' : ''),
         '<div class="card-type">' + safeTypeLine + '</div>',
         getPrintLabel(card) ? '<div class="card-print">Print: ' + escapeHtml(getPrintLabel(card)) + '</div>' : "",
@@ -821,6 +823,8 @@ decks[deckName].sort(function(a, b) {
         '<div class="card-controls">',
         '<input type="text" id="' + deckInputId + '" list="deckOptions" value="' + safeDeckName + '" aria-label="Deck name for ' + safeCardName + '" />',
         '<button type="button" data-action="move" data-index="' + index + '">Move to deck</button>',
+        '<input type="number" class="qty-input" min="1" value="' + (card.quantity || 1) + '" aria-label="Quantity for ' + safeCardName + '" data-qty-index="' + index + '" />',
+        '<button type="button" data-action="set-qty" data-index="' + index + '">Set qty</button>',
         '<button type="button" data-action="remove" data-index="' + index + '">Remove</button>',
         "</div>"
       ].join("");
@@ -843,6 +847,16 @@ function bindCardActionButtons() {
   document.querySelectorAll("[data-action='remove']").forEach(function(button) {
     button.addEventListener("click", function() {
       removeCard(Number(button.dataset.index));
+    });
+  });
+
+  document.querySelectorAll("[data-action='set-qty']").forEach(function(button) {
+    button.addEventListener("click", function() {
+      let index = Number(button.dataset.index);
+      let input = document.querySelector("[data-qty-index='" + index + "']");
+      let qty = parseInt(input && input.value, 10);
+      if (!qty || qty < 1) return;
+      updateCardQuantity(index, qty);
     });
   });
 }
@@ -1007,6 +1021,22 @@ async function updateCardDeck(index) {
     populateDeckFilter();
     displayCards();
     showStatusMessage("Could not move " + updatedCard.name + ". Please try again.");
+  }
+}
+
+async function updateCardQuantity(index, qty) {
+  let previousCard = collection[index];
+  let updatedCard = { ...previousCard, quantity: qty };
+  collection[index] = updatedCard;
+  displayCards();
+  showStatusMessage(updatedCard.name + " quantity set to " + qty + ".");
+  try {
+    await dbUpsertCards([updatedCard]);
+  } catch (error) {
+    console.error("Could not update quantity.", error);
+    collection[index] = previousCard;
+    displayCards();
+    showStatusMessage("Could not update quantity for " + previousCard.name + ". Please try again.");
   }
 }
 
