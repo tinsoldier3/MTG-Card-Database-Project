@@ -119,30 +119,40 @@ let currentUserId = null;
 let statusMessageTimeout;
 let currentView = "decks";
 let setNameCache = {};
+let realtimeChannel = null;
+let isPasswordRecovery = false;
 
 document.addEventListener("DOMContentLoaded", async function() {
   cacheElements();
   initializeTheme();
   bindEvents();
 
-  let { data: { session } } = await supabaseClient.auth.getSession();
-  if (session) {
-    currentUserId = session.user.id;
-    await initApp(session.user.email);
-  } else {
-    showAuthPanel();
-  }
-
   supabaseClient.auth.onAuthStateChange(async function(event, session) {
-    if (event === "SIGNED_IN" && session) {
+    if (event === "PASSWORD_RECOVERY") {
+      isPasswordRecovery = true;
+      showResetPasswordPanel();
+    } else if (event === "SIGNED_IN" && session) {
+      if (isPasswordRecovery) return;
       currentUserId = session.user.id;
       await initApp(session.user.email);
     } else if (event === "SIGNED_OUT") {
+      isPasswordRecovery = false;
+      unsubscribeFromCollection();
       collection = [];
       currentUserId = null;
       showAuthPanel();
     }
   });
+
+  let { data: { session } } = await supabaseClient.auth.getSession();
+  if (!isPasswordRecovery) {
+    if (session) {
+      currentUserId = session.user.id;
+      await initApp(session.user.email);
+    } else {
+      showAuthPanel();
+    }
+  }
 });
 
 async function loadSetNames() {
@@ -257,9 +267,14 @@ function cacheElements() {
   elements.signInButton = document.getElementById("signInButton");
   elements.signUpButton = document.getElementById("signUpButton");
   elements.signOutButton = document.getElementById("signOutButton");
+  elements.forgotPasswordButton = document.getElementById("forgotPasswordButton");
+  elements.updatePasswordButton = document.getElementById("updatePasswordButton");
   elements.authEmail = document.getElementById("authEmail");
   elements.authPassword = document.getElementById("authPassword");
+  elements.newPasswordInput = document.getElementById("newPasswordInput");
   elements.authMessage = document.getElementById("authMessage");
+  elements.resetMessage = document.getElementById("resetMessage");
+  elements.resetPasswordPanel = document.getElementById("resetPasswordPanel");
   elements.userEmail = document.getElementById("userEmail");
 }
 
@@ -279,8 +294,13 @@ function bindEvents() {
   elements.signInButton.addEventListener("click", signIn);
   elements.signUpButton.addEventListener("click", signUp);
   elements.signOutButton.addEventListener("click", signOut);
+  elements.forgotPasswordButton.addEventListener("click", forgotPassword);
+  elements.updatePasswordButton.addEventListener("click", updatePassword);
   elements.authPassword.addEventListener("keydown", function(e) {
     if (e.key === "Enter") signIn();
+  });
+  elements.newPasswordInput.addEventListener("keydown", function(e) {
+    if (e.key === "Enter") updatePassword();
   });
 }
 
@@ -891,6 +911,8 @@ async function addCard() {
     return;
   }
 
+  elements.addCardButton.disabled = true;
+  elements.addCardButton.textContent = "Looking up...";
   try {
     let card = await fetchNamedCard(cardName);
     
@@ -902,21 +924,34 @@ async function addCard() {
     });
 
     if (existingIndex !== -1) {
-      // Add quantity to existing card instead of creating duplicate
-      let updatedCard = { ...collection[existingIndex], quantity: (collection[existingIndex].quantity || 1) + quantity };
-      await dbUpsertCards([updatedCard]);
+      let previousCard = collection[existingIndex];
+      let updatedCard = { ...previousCard, quantity: (previousCard.quantity || 1) + quantity };
       collection[existingIndex] = updatedCard;
       populateDeckFilter();
       displayCards();
       showStatusMessage(quantity + "x " + card.name + " added (now " + updatedCard.quantity + " total).");
+      try {
+        await dbUpsertCards([updatedCard]);
+      } catch (error) {
+        collection[existingIndex] = previousCard;
+        populateDeckFilter();
+        displayCards();
+        showStatusMessage("Could not add " + card.name + ". Please try again.");
+      }
     } else {
-      // Add new card
       let newCard = createStoredCard(card, { deck: deckName, foil: foil, quantity: quantity });
-      await dbUpsertCards([newCard]);
       collection.push(newCard);
       populateDeckFilter();
       displayCards();
       showStatusMessage(quantity + "x " + card.name + " added to " + getDeckDisplayLabel(deckName) + ".");
+      try {
+        await dbUpsertCards([newCard]);
+      } catch (error) {
+        collection.splice(collection.indexOf(newCard), 1);
+        populateDeckFilter();
+        displayCards();
+        showStatusMessage("Could not add " + card.name + ". Please try again.");
+      }
     }
 
     elements.cardInput.value = "";
@@ -930,20 +965,26 @@ async function addCard() {
     }
   } catch (error) {
     alert(error.message);
+  } finally {
+    elements.addCardButton.disabled = false;
+    elements.addCardButton.textContent = "Add card";
   }
 }
 
 async function removeCard(index) {
   let card = collection[index];
+  collection.splice(index, 1);
+  populateDeckFilter();
+  displayCards();
+  showStatusMessage(card.name + " removed.");
   try {
     await dbDeleteCards([card.id]);
-    collection.splice(index, 1);
-    populateDeckFilter();
-    displayCards();
-    showStatusMessage(card.name + " removed.");
   } catch (error) {
     console.error("Could not remove card.", error);
-    alert("Could not remove card. Please try again.");
+    collection.splice(index, 0, card);
+    populateDeckFilter();
+    displayCards();
+    showStatusMessage("Could not remove " + card.name + ". Please try again.");
   }
 }
 
@@ -952,17 +993,20 @@ async function updateCardDeck(index) {
   if (!input) return;
 
   let nextDeckName = normalizeDeckName(input.value);
-  let previousDeckName = collection[index].deck || "unsorted";
-  let updatedCard = { ...collection[index], deck: nextDeckName };
+  let previousCard = collection[index];
+  let updatedCard = { ...previousCard, deck: nextDeckName };
+  collection[index] = updatedCard;
+  populateDeckFilter();
+  displayCards();
+  showStatusMessage(updatedCard.name + " moved from " + getDeckDisplayLabel(previousCard.deck || "unsorted") + " to " + getDeckDisplayLabel(nextDeckName) + ".");
   try {
     await dbUpsertCards([updatedCard]);
-    collection[index] = updatedCard;
-    populateDeckFilter();
-    displayCards();
-    showStatusMessage(updatedCard.name + " moved from " + getDeckDisplayLabel(previousDeckName) + " to " + getDeckDisplayLabel(nextDeckName) + ".");
   } catch (error) {
     console.error("Could not move card.", error);
-    alert("Could not move card. Please try again.");
+    collection[index] = previousCard;
+    populateDeckFilter();
+    displayCards();
+    showStatusMessage("Could not move " + updatedCard.name + ". Please try again.");
   }
 }
 
@@ -1020,15 +1064,14 @@ function parseDeckFileText(text) {
       return;
     }
 
-    for (let i = 0; i < parsedLine.quantity; i += 1) {
-      identifiers.push({
-        name: parsedLine.cardName,
-        set: parsedLine.set,
-        collector_number: parsedLine.collectorNumber,
-        foil: isFoil,
-        matched: false
-      });
-    }
+    identifiers.push({
+      name: parsedLine.cardName,
+      set: parsedLine.set,
+      collector_number: parsedLine.collectorNumber,
+      quantity: parsedLine.quantity,
+      foil: isFoil,
+      matched: false
+    });
   });
 
   return identifiers;
@@ -1237,7 +1280,8 @@ async function importDeck(mode) {
         deck: deckName,
         foil: entry.identifier ? entry.identifier.foil : false,
         set: entry.identifier ? entry.identifier.set : "",
-        collectorNumber: entry.identifier ? entry.identifier.collector_number : ""
+        collectorNumber: entry.identifier ? entry.identifier.collector_number : "",
+        quantity: entry.identifier ? entry.identifier.quantity : 1
       });
 
       if (mode === "merge") {
@@ -1487,6 +1531,57 @@ async function dbDeleteCards(ids) {
   if (error) throw error;
 }
 
+function handleRealtimeEvent(payload) {
+  let { eventType } = payload;
+
+  if (eventType === "INSERT") {
+    let alreadyPresent = collection.some(function(c) { return c.id === payload.new.id; });
+    if (!alreadyPresent) {
+      collection.push(rowToCard(payload.new));
+      populateDeckFilter();
+      displayCards();
+    }
+  } else if (eventType === "UPDATE") {
+    let index = collection.findIndex(function(c) { return c.id === payload.new.id; });
+    if (index !== -1) {
+      let updated = rowToCard(payload.new);
+      if (JSON.stringify(collection[index]) !== JSON.stringify(updated)) {
+        collection[index] = updated;
+        populateDeckFilter();
+        displayCards();
+      }
+    }
+  } else if (eventType === "DELETE") {
+    let index = collection.findIndex(function(c) { return c.id === payload.old.id; });
+    if (index !== -1) {
+      collection.splice(index, 1);
+      populateDeckFilter();
+      displayCards();
+    }
+  }
+}
+
+function subscribeToCollection() {
+  if (realtimeChannel) {
+    supabaseClient.removeChannel(realtimeChannel);
+  }
+  realtimeChannel = supabaseClient
+    .channel("cards-" + currentUserId)
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "cards", filter: "user_id=eq." + currentUserId },
+      handleRealtimeEvent
+    )
+    .subscribe();
+}
+
+function unsubscribeFromCollection() {
+  if (realtimeChannel) {
+    supabaseClient.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+  }
+}
+
 // ========================= //
 // AUTH                      //
 // ========================= //
@@ -1494,6 +1589,7 @@ async function dbDeleteCards(ids) {
 function showAuthPanel() {
   document.getElementById("authPanel").classList.remove("hidden");
   document.getElementById("appShell").classList.add("hidden");
+  elements.resetPasswordPanel.classList.add("hidden");
 }
 
 function hideAuthPanel() {
@@ -1501,9 +1597,17 @@ function hideAuthPanel() {
   document.getElementById("appShell").classList.remove("hidden");
 }
 
+function showResetPasswordPanel() {
+  document.getElementById("authPanel").classList.add("hidden");
+  document.getElementById("appShell").classList.add("hidden");
+  elements.resetPasswordPanel.classList.remove("hidden");
+  elements.newPasswordInput.focus();
+}
+
 async function initApp(email) {
   hideAuthPanel();
   elements.userEmail.textContent = email || "";
+  elements.cardGrid.innerHTML = "<p class='empty-state'>Loading your collection...</p>";
 
   collection = await loadCollection();
 
@@ -1525,6 +1629,7 @@ async function initApp(email) {
     }
   }
 
+  subscribeToCollection();
   setCurrentViewFromHash();
   populateCommanderFilter();
   populateDeckFilter();
@@ -1537,8 +1642,14 @@ async function signIn() {
   let email = elements.authEmail.value.trim();
   let password = elements.authPassword.value;
   elements.authMessage.classList.add("hidden");
+  elements.signInButton.disabled = true;
+  elements.signUpButton.disabled = true;
+  elements.signInButton.textContent = "Signing in...";
 
   let { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  elements.signInButton.disabled = false;
+  elements.signUpButton.disabled = false;
+  elements.signInButton.textContent = "Sign in";
   if (error) {
     elements.authMessage.textContent = error.message;
     elements.authMessage.classList.remove("hidden");
@@ -1553,8 +1664,14 @@ async function signUp() {
   let email = elements.authEmail.value.trim();
   let password = elements.authPassword.value;
   elements.authMessage.classList.add("hidden");
+  elements.signInButton.disabled = true;
+  elements.signUpButton.disabled = true;
+  elements.signUpButton.textContent = "Creating account...";
 
   let { data, error } = await supabaseClient.auth.signUp({ email, password });
+  elements.signInButton.disabled = false;
+  elements.signUpButton.disabled = false;
+  elements.signUpButton.textContent = "Create account";
   if (error) {
     elements.authMessage.textContent = error.message;
     elements.authMessage.classList.remove("hidden");
@@ -1573,4 +1690,52 @@ async function signUp() {
 
 async function signOut() {
   await supabaseClient.auth.signOut();
+}
+
+async function forgotPassword() {
+  let email = elements.authEmail.value.trim();
+  if (!email) {
+    elements.authMessage.textContent = "Enter your email address above first.";
+    elements.authMessage.style.color = "";
+    elements.authMessage.classList.remove("hidden");
+    return;
+  }
+  let { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + window.location.pathname
+  });
+  if (error) {
+    elements.authMessage.textContent = error.message;
+    elements.authMessage.style.color = "";
+    elements.authMessage.classList.remove("hidden");
+    return;
+  }
+  elements.authMessage.textContent = "Password reset email sent — check your inbox.";
+  elements.authMessage.style.color = "green";
+  elements.authMessage.classList.remove("hidden");
+}
+
+async function updatePassword() {
+  let newPassword = elements.newPasswordInput.value;
+  if (!newPassword) {
+    elements.resetMessage.textContent = "Please enter a new password.";
+    elements.resetMessage.style.color = "";
+    elements.resetMessage.classList.remove("hidden");
+    return;
+  }
+  let { error } = await supabaseClient.auth.updateUser({ password: newPassword });
+  if (error) {
+    elements.resetMessage.textContent = error.message;
+    elements.resetMessage.style.color = "";
+    elements.resetMessage.classList.remove("hidden");
+    return;
+  }
+  isPasswordRecovery = false;
+  elements.newPasswordInput.value = "";
+  elements.resetPasswordPanel.classList.add("hidden");
+  let { data: { session } } = await supabaseClient.auth.getSession();
+  if (session) {
+    currentUserId = session.user.id;
+    await initApp(session.user.email);
+  }
+  showStatusMessage("Password updated successfully.");
 }
