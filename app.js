@@ -911,6 +911,8 @@ async function addCard() {
     return;
   }
 
+  elements.addCardButton.disabled = true;
+  elements.addCardButton.textContent = "Looking up...";
   try {
     let card = await fetchNamedCard(cardName);
     
@@ -963,6 +965,9 @@ async function addCard() {
     }
   } catch (error) {
     alert(error.message);
+  } finally {
+    elements.addCardButton.disabled = false;
+    elements.addCardButton.textContent = "Add card";
   }
 }
 
@@ -1602,6 +1607,7 @@ function showResetPasswordPanel() {
 async function initApp(email) {
   hideAuthPanel();
   elements.userEmail.textContent = email || "";
+  elements.cardGrid.innerHTML = "<p class='empty-state'>Loading your collection...</p>";
 
   collection = await loadCollection();
 
@@ -1636,8 +1642,14 @@ async function signIn() {
   let email = elements.authEmail.value.trim();
   let password = elements.authPassword.value;
   elements.authMessage.classList.add("hidden");
+  elements.signInButton.disabled = true;
+  elements.signUpButton.disabled = true;
+  elements.signInButton.textContent = "Signing in...";
 
   let { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  elements.signInButton.disabled = false;
+  elements.signUpButton.disabled = false;
+  elements.signInButton.textContent = "Sign in";
   if (error) {
     elements.authMessage.textContent = error.message;
     elements.authMessage.classList.remove("hidden");
@@ -1652,8 +1664,14 @@ async function signUp() {
   let email = elements.authEmail.value.trim();
   let password = elements.authPassword.value;
   elements.authMessage.classList.add("hidden");
+  elements.signInButton.disabled = true;
+  elements.signUpButton.disabled = true;
+  elements.signUpButton.textContent = "Creating account...";
 
   let { data, error } = await supabaseClient.auth.signUp({ email, password });
+  elements.signInButton.disabled = false;
+  elements.signUpButton.disabled = false;
+  elements.signUpButton.textContent = "Create account";
   if (error) {
     elements.authMessage.textContent = error.message;
     elements.authMessage.classList.remove("hidden");
