@@ -922,21 +922,34 @@ async function addCard() {
     });
 
     if (existingIndex !== -1) {
-      // Add quantity to existing card instead of creating duplicate
-      let updatedCard = { ...collection[existingIndex], quantity: (collection[existingIndex].quantity || 1) + quantity };
-      await dbUpsertCards([updatedCard]);
+      let previousCard = collection[existingIndex];
+      let updatedCard = { ...previousCard, quantity: (previousCard.quantity || 1) + quantity };
       collection[existingIndex] = updatedCard;
       populateDeckFilter();
       displayCards();
       showStatusMessage(quantity + "x " + card.name + " added (now " + updatedCard.quantity + " total).");
+      try {
+        await dbUpsertCards([updatedCard]);
+      } catch (error) {
+        collection[existingIndex] = previousCard;
+        populateDeckFilter();
+        displayCards();
+        showStatusMessage("Could not add " + card.name + ". Please try again.");
+      }
     } else {
-      // Add new card
       let newCard = createStoredCard(card, { deck: deckName, foil: foil, quantity: quantity });
-      await dbUpsertCards([newCard]);
       collection.push(newCard);
       populateDeckFilter();
       displayCards();
       showStatusMessage(quantity + "x " + card.name + " added to " + getDeckDisplayLabel(deckName) + ".");
+      try {
+        await dbUpsertCards([newCard]);
+      } catch (error) {
+        collection.splice(collection.indexOf(newCard), 1);
+        populateDeckFilter();
+        displayCards();
+        showStatusMessage("Could not add " + card.name + ". Please try again.");
+      }
     }
 
     elements.cardInput.value = "";
@@ -955,15 +968,18 @@ async function addCard() {
 
 async function removeCard(index) {
   let card = collection[index];
+  collection.splice(index, 1);
+  populateDeckFilter();
+  displayCards();
+  showStatusMessage(card.name + " removed.");
   try {
     await dbDeleteCards([card.id]);
-    collection.splice(index, 1);
-    populateDeckFilter();
-    displayCards();
-    showStatusMessage(card.name + " removed.");
   } catch (error) {
     console.error("Could not remove card.", error);
-    alert("Could not remove card. Please try again.");
+    collection.splice(index, 0, card);
+    populateDeckFilter();
+    displayCards();
+    showStatusMessage("Could not remove " + card.name + ". Please try again.");
   }
 }
 
@@ -972,17 +988,20 @@ async function updateCardDeck(index) {
   if (!input) return;
 
   let nextDeckName = normalizeDeckName(input.value);
-  let previousDeckName = collection[index].deck || "unsorted";
-  let updatedCard = { ...collection[index], deck: nextDeckName };
+  let previousCard = collection[index];
+  let updatedCard = { ...previousCard, deck: nextDeckName };
+  collection[index] = updatedCard;
+  populateDeckFilter();
+  displayCards();
+  showStatusMessage(updatedCard.name + " moved from " + getDeckDisplayLabel(previousCard.deck || "unsorted") + " to " + getDeckDisplayLabel(nextDeckName) + ".");
   try {
     await dbUpsertCards([updatedCard]);
-    collection[index] = updatedCard;
-    populateDeckFilter();
-    displayCards();
-    showStatusMessage(updatedCard.name + " moved from " + getDeckDisplayLabel(previousDeckName) + " to " + getDeckDisplayLabel(nextDeckName) + ".");
   } catch (error) {
     console.error("Could not move card.", error);
-    alert("Could not move card. Please try again.");
+    collection[index] = previousCard;
+    populateDeckFilter();
+    displayCards();
+    showStatusMessage("Could not move " + updatedCard.name + ". Please try again.");
   }
 }
 
