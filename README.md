@@ -20,6 +20,7 @@ Build a small but reliable collection app that is easy to maintain, easy to exte
 - Optimistic UI — card add, remove, and move operations update instantly with background sync and rollback on error
 - Loading states — auth buttons, collection grid, and card add button show progress during async operations
 - Password reset via email (forgot password link on sign-in screen)
+- In-place quantity editing — each card has a number input and "Set qty" button directly in the card grid
 
 ## Project Structure
 
@@ -52,8 +53,7 @@ Supabase (hosted Postgres) replaces localStorage as the source of truth.
 
 ## What's Next
 
-1. **Quantity editing in-place** — quantity only increases when re-adding a card; no way to set it to a specific number from the card grid.
-2. **Deck detail pages** — Archidekt-style per-deck overview using hash routing (planned, not started).
+1. **Deck detail pages** — Archidekt-style per-deck overview using hash routing (planned, not started).
 3. **Duplicate detection on import** — cards are matched by name+foil during merge, but quantity stacking across repeated imports could be smarter.
 4. **Better auth error messaging** — surface Supabase validation errors (e.g. weak password) more clearly in the sign-up form.
 5. **Framework migration (optional)** — move to Vite + Vue once the data layer is stable.
