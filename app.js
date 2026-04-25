@@ -1756,7 +1756,7 @@ async function forgotPassword() {
     return;
   }
   let { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.origin + window.location.pathname
+    redirectTo: "https://tinsoldier3.github.io/MTG-Card-Database-Project/"
   });
   if (error) {
     elements.authMessage.textContent = error.message;
