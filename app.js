@@ -699,13 +699,18 @@ if (searchQuery) {
         newCard.className = "card";
         newCard.innerHTML = [
           '<img src="' + safeImage + '" alt="' + safeCardName + ' card image" />',
-          '<div class="card-name">' + safeCardName + (card.quantity && card.quantity > 1 ? ' <span class="card-qty">(' + card.quantity + 'x)</span>' : '') + '</div>',
+          '<div class="card-name">' + safeCardName + ' <span class="card-qty" data-qty-badge="' + index + '"' + (card.quantity && card.quantity > 1 ? '' : ' style="display:none"') + '>(' + (card.quantity || 1) + 'x)</span></div>',
           (card.foil ? '<div class="card-foil">✨ Foil</div>' : ''),
           '<div class="card-type">' + safeTypeLine + '</div>',
           getPrintLabel(card) ? '<div class="card-print">Print: ' + escapeHtml(getPrintLabel(card)) + '</div>' : "",
           '<div class="card-colors">Color identity: ' + getColorIdentityLabel(card.colorIdentity) + '</div>',
           '<div class="card-deck-label">Location: ' + escapeHtml(deckDisplayLabel) + '</div>',
           '<div class="card-controls">',
+          '<div class="qty-stepper">',
+          '<button type="button" data-action="qty-down" data-index="' + index + '" aria-label="Decrease quantity of ' + safeCardName + '">−</button>',
+          '<span class="qty-value" data-qty-index="' + index + '">' + (card.quantity || 1) + '</span>',
+          '<button type="button" data-action="qty-up" data-index="' + index + '" aria-label="Increase quantity of ' + safeCardName + '">+</button>',
+          '</div>',
           '<input type="text" id="' + deckInputId + '" list="deckOptions" value="' + safeDeckName + '" aria-label="Deck name for ' + safeCardName + '" />',
           '<button type="button" data-action="move" data-index="' + index + '">Move to deck</button>',
           '<button type="button" data-action="remove" data-index="' + index + '">Remove</button>',
@@ -812,13 +817,18 @@ decks[deckName].sort(function(a, b) {
       newCard.className = legality.checked && !legality.legal ? "card card-illegal" : "card";
       newCard.innerHTML = [
         '<img src="' + safeImage + '" alt="' + safeCardName + ' card image" />',
-        '<div class="card-name">' + safeCardName + (card.quantity && card.quantity > 1 ? ' <span class="card-qty">(' + card.quantity + 'x)</span>' : '') + '</div>',
+        '<div class="card-name">' + safeCardName + ' <span class="card-qty" data-qty-badge="' + index + '"' + (card.quantity && card.quantity > 1 ? '' : ' style="display:none"') + '>(' + (card.quantity || 1) + 'x)</span></div>',
         (card.foil ? '<div class="card-foil">✨ Foil</div>' : ''),
         '<div class="card-type">' + safeTypeLine + '</div>',
         getPrintLabel(card) ? '<div class="card-print">Print: ' + escapeHtml(getPrintLabel(card)) + '</div>' : "",
         '<div class="card-colors">Color identity: ' + getColorIdentityLabel(card.colorIdentity) + '</div>',
         legality.checked && !legality.legal ? '<div class="status-badge illegal">Illegal for this deck</div>' : "",
         '<div class="card-controls">',
+        '<div class="qty-stepper">',
+        '<button type="button" data-action="qty-down" data-index="' + index + '" aria-label="Decrease quantity of ' + safeCardName + '">−</button>',
+        '<span class="qty-value" data-qty-index="' + index + '">' + (card.quantity || 1) + '</span>',
+        '<button type="button" data-action="qty-up" data-index="' + index + '" aria-label="Increase quantity of ' + safeCardName + '">+</button>',
+        '</div>',
         '<input type="text" id="' + deckInputId + '" list="deckOptions" value="' + safeDeckName + '" aria-label="Deck name for ' + safeCardName + '" />',
         '<button type="button" data-action="move" data-index="' + index + '">Move to deck</button>',
         '<button type="button" data-action="remove" data-index="' + index + '">Remove</button>',
@@ -843,6 +853,18 @@ function bindCardActionButtons() {
   document.querySelectorAll("[data-action='remove']").forEach(function(button) {
     button.addEventListener("click", function() {
       removeCard(Number(button.dataset.index));
+    });
+  });
+
+  document.querySelectorAll("[data-action='qty-up']").forEach(function(button) {
+    button.addEventListener("click", function() {
+      updateCardQuantity(Number(button.dataset.index), 1);
+    });
+  });
+
+  document.querySelectorAll("[data-action='qty-down']").forEach(function(button) {
+    button.addEventListener("click", function() {
+      updateCardQuantity(Number(button.dataset.index), -1);
     });
   });
 }
@@ -1007,6 +1029,39 @@ async function updateCardDeck(index) {
     populateDeckFilter();
     displayCards();
     showStatusMessage("Could not move " + updatedCard.name + ". Please try again.");
+  }
+}
+
+async function updateCardQuantity(index, delta) {
+  let card = collection[index];
+  let currentQty = card.quantity || 1;
+  let newQty = Math.max(1, currentQty + delta);
+  if (newQty === currentQty) return;
+
+  // Optimistic DOM update — avoid a full re-render for every +/- click
+  let qtyValue = document.querySelector('[data-qty-index="' + index + '"]');
+  let qtyBadge = document.querySelector('[data-qty-badge="' + index + '"]');
+  if (qtyValue) qtyValue.textContent = newQty;
+  if (qtyBadge) {
+    qtyBadge.textContent = "(" + newQty + "x)";
+    qtyBadge.style.display = newQty > 1 ? "" : "none";
+  }
+
+  let updatedCard = { ...card, quantity: newQty };
+  collection[index] = updatedCard;
+  showStatusMessage(card.name + " quantity set to " + newQty + ".");
+
+  try {
+    await dbUpsertCards([updatedCard]);
+  } catch (error) {
+    console.error("Could not update card quantity.", error);
+    collection[index] = card;
+    if (qtyValue) qtyValue.textContent = currentQty;
+    if (qtyBadge) {
+      qtyBadge.textContent = "(" + currentQty + "x)";
+      qtyBadge.style.display = currentQty > 1 ? "" : "none";
+    }
+    showStatusMessage("Could not update " + card.name + " quantity. Please try again.");
   }
 }
 

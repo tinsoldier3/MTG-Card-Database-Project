@@ -368,6 +368,34 @@ button:hover {
 }
 
 /* ========================= */
+/* QUANTITY STEPPER          */
+/* ========================= */
+
+.qty-stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.qty-stepper button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.qty-value {
+  min-width: 24px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+/* ========================= */
 /* RESPONSIVE                */
 /* ========================= */
 
