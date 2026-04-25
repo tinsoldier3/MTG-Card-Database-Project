@@ -713,6 +713,8 @@ if (searchQuery) {
           '</div>',
           '<input type="text" id="' + deckInputId + '" list="deckOptions" value="' + safeDeckName + '" aria-label="Deck name for ' + safeCardName + '" />',
           '<button type="button" data-action="move" data-index="' + index + '">Move to deck</button>',
+          '<input type="number" class="qty-input" min="1" value="' + (card.quantity || 1) + '" aria-label="Quantity for ' + safeCardName + '" data-qty-index="' + index + '" />',
+          '<button type="button" data-action="set-qty" data-index="' + index + '">Set qty</button>',
           '<button type="button" data-action="remove" data-index="' + index + '">Remove</button>',
           "</div>"
         ].join("");
@@ -831,6 +833,8 @@ decks[deckName].sort(function(a, b) {
         '</div>',
         '<input type="text" id="' + deckInputId + '" list="deckOptions" value="' + safeDeckName + '" aria-label="Deck name for ' + safeCardName + '" />',
         '<button type="button" data-action="move" data-index="' + index + '">Move to deck</button>',
+        '<input type="number" class="qty-input" min="1" value="' + (card.quantity || 1) + '" aria-label="Quantity for ' + safeCardName + '" data-qty-index="' + index + '" />',
+        '<button type="button" data-action="set-qty" data-index="' + index + '">Set qty</button>',
         '<button type="button" data-action="remove" data-index="' + index + '">Remove</button>',
         "</div>"
       ].join("");
