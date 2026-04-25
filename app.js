@@ -871,6 +871,17 @@ function bindCardActionButtons() {
       updateCardQuantity(Number(button.dataset.index), -1);
     });
   });
+
+  document.querySelectorAll("[data-action='set-qty']").forEach(function(button) {
+    button.addEventListener("click", function() {
+      let index = Number(button.dataset.index);
+      let input = document.querySelector(".qty-input[data-qty-index='" + index + "']");
+      let qty = parseInt(input && input.value, 10);
+      if (!qty || qty < 1) return;
+      let delta = qty - (collection[index].quantity || 1);
+      if (delta !== 0) updateCardQuantity(index, delta);
+    });
+  });
 }
 
 async function fetchNamedCard(cardName) {
