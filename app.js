@@ -557,7 +557,7 @@ function displayCards() {
       return isBoxOrBinder(deckName);
     }
     return true;
-  }).length;
+  }).reduce(function(sum, card) { return sum + (card.quantity || 1); }, 0);
 
   let filteredCards = [];
   collection.forEach(function(card, index) {
@@ -589,7 +589,7 @@ function displayCards() {
     }
 
     filteredCards.push({ card: card, index: index, deckName: deckName });
-    visibleCount++;
+    visibleCount += (card.quantity || 1);
   });
 
   let decks = {};
@@ -661,7 +661,7 @@ if (searchQuery) {
 
       let setHeader = document.createElement("h2");
       setHeader.className = "deck-heading";
-      setHeader.textContent = getSetDisplayLabel(setCode) + " — " + sets[setCode].length + " cards";
+      setHeader.textContent = getSetDisplayLabel(setCode) + " — " + sets[setCode].reduce(function(sum, e) { return sum + (e.card.quantity || 1); }, 0) + " cards";
       setSection.appendChild(setHeader);
 
       let setGrid = document.createElement("div");
@@ -753,7 +753,7 @@ if (searchQuery) {
 
     let deckHeader = document.createElement("h2");
     deckHeader.className = "deck-heading";
-    deckHeader.textContent = getDeckDisplayLabel(deckName) + " (" + decks[deckName].length + " cards)";
+    deckHeader.textContent = getDeckDisplayLabel(deckName) + " (" + decks[deckName].reduce(function(sum, e) { return sum + (e.card.quantity || 1); }, 0) + " cards)";
     deckSection.appendChild(deckHeader);
 
     if (COMMANDER_DECKS[deckName]) {
