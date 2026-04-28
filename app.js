@@ -1,4 +1,5 @@
 const STORAGE_KEY = "mtgCollection";
+const COLLECTION_BATCH_SIZE = 1000;
 const SUPABASE_URL = "https://sxilslbrrrxhysqthdre.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4aWxzbGJycnJ4aHlzcXRoZHJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1NTc3NzQsImV4cCI6MjA5MjEzMzc3NH0.vRPVR1H0TxBhnu9YRikxQ9nd48mxK8v0Z-bY-LBl5wU";
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -317,12 +318,60 @@ function updateNavActive() {
 }
 
 async function loadCollection() {
-  let { data, error } = await supabaseClient.from("cards").select("*");
-  if (error) {
-    console.error("Unable to load collection.", error);
-    return [];
+  let selectQuery = supabaseClient.from("cards").select("*");
+
+  // The real Supabase client returns a query builder; test mocks may return a Promise directly.
+  if (!selectQuery || typeof selectQuery.eq !== "function") {
+    let { data, error } = await selectQuery;
+    if (error) {
+      console.error("Unable to load collection.", error);
+      throw error;
+    }
+    return safelyMapRowsToCards(data || []);
   }
-  return (data || []).map(rowToCard);
+
+  let rows = [];
+  let fromIndex = 0;
+
+  while (true) {
+    let query = supabaseClient
+      .from("cards")
+      .select("*")
+      .eq("user_id", currentUserId)
+      .order("created_at", { ascending: true })
+      .range(fromIndex, fromIndex + COLLECTION_BATCH_SIZE - 1);
+
+    let { data, error } = await query;
+    if (error) {
+      console.error("Unable to load collection.", error);
+      throw error;
+    }
+
+    let batch = data || [];
+    rows = rows.concat(batch);
+
+    if (batch.length < COLLECTION_BATCH_SIZE) {
+      break;
+    }
+
+    fromIndex += COLLECTION_BATCH_SIZE;
+  }
+
+  return safelyMapRowsToCards(rows);
+}
+
+function getCollectionLoadErrorMessage(error) {
+  let message = error && typeof error.message === "string" ? error.message.toLowerCase() : "";
+
+  if (message.includes("jwt") || message.includes("token") || message.includes("auth")) {
+    return "Your session expired while loading cards. Sign out and back in if a refresh doesn't fix it.";
+  }
+
+  if (message.includes("network") || message.includes("fetch") || message.includes("timeout")) {
+    return "We couldn't reach Supabase to load your cards. Check your connection and try again.";
+  }
+
+  return "We couldn't load your cards from Supabase right now. Try refreshing the page in a moment.";
 }
 
 function saveCollection() {
@@ -330,17 +379,63 @@ function saveCollection() {
 }
 
 function normalizeStoredCard(card) {
+  let safeCard = card || {};
   return {
-    ...card,
-    id: card.id || crypto.randomUUID(),
-    deck: normalizeDeckName(card.deck || "unsorted"),
-    foil: Boolean(card.foil),
-    quantity: card.quantity || 1,
-    colorIdentity: Array.isArray(card.colorIdentity) ? card.colorIdentity : [],
-    set: typeof card.set === "string" ? card.set.toLowerCase() : "",
-    collectorNumber: typeof card.collectorNumber === "string" ? card.collectorNumber : "",
-    scryfallId: typeof card.scryfallId === "string" ? card.scryfallId : ""
+    ...safeCard,
+    id: safeCard.id || createCardId(),
+    name: typeof safeCard.name === "string" ? safeCard.name : "",
+    type: typeof safeCard.type === "string" ? safeCard.type : "",
+    image: typeof safeCard.image === "string" ? safeCard.image : "",
+    deck: normalizeDeckName(safeCard.deck || "unsorted"),
+    foil: Boolean(safeCard.foil),
+    quantity: Number.isFinite(Number(safeCard.quantity)) && Number(safeCard.quantity) > 0 ? Number(safeCard.quantity) : 1,
+    colorIdentity: Array.isArray(safeCard.colorIdentity) ? safeCard.colorIdentity.filter(function(color) {
+      return typeof color === "string" && color.length > 0;
+    }) : [],
+    set: typeof safeCard.set === "string" ? safeCard.set.toLowerCase() : "",
+    collectorNumber: typeof safeCard.collectorNumber === "string" ? safeCard.collectorNumber : "",
+    scryfallId: typeof safeCard.scryfallId === "string" ? safeCard.scryfallId : ""
   };
+}
+
+function createCardId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") {
+    return window.crypto.randomUUID();
+  }
+  return "card-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+}
+
+function safelyMapRowsToCards(rows) {
+  let skippedRows = [];
+  let mappedCards = (rows || []).reduce(function(cards, row) {
+    try {
+      let card = rowToCard(row);
+      if (!card.name) {
+        skippedRows.push(getRowDebugId(row));
+        return cards;
+      }
+      cards.push(card);
+    } catch (error) {
+      let rowDebugId = getRowDebugId(row);
+      skippedRows.push(rowDebugId);
+      console.warn("Skipping an invalid card row:", rowDebugId, error, row);
+    }
+    return cards;
+  }, []);
+
+  if (skippedRows.length > 0) {
+    console.warn("Skipped invalid saved card rows:", skippedRows.join(", "));
+    showStatusMessage("Skipped " + skippedRows.length + " invalid saved card" + (skippedRows.length === 1 ? "" : "s") + " while loading.");
+  }
+
+  return mappedCards;
+}
+
+function getRowDebugId(row) {
+  if (!row || typeof row !== "object") {
+    return "unknown-row";
+  }
+  return row.id || row.name || "unknown-row";
 }
 
 function normalizeDeckName(deckName) {
@@ -1679,7 +1774,18 @@ async function initApp(email) {
   elements.userEmail.textContent = email || "";
   elements.cardGrid.innerHTML = "<p class='empty-state'>Loading your collection...</p>";
 
-  collection = await loadCollection();
+  try {
+    collection = await loadCollection();
+  } catch (error) {
+    collection = [];
+    populateCommanderFilter();
+    populateDeckFilter();
+    let loadErrorMessage = getCollectionLoadErrorMessage(error);
+    elements.cardGrid.innerHTML = "<p class='empty-state'>" + escapeHtml(loadErrorMessage) + "</p>";
+    showStatusMessage(loadErrorMessage);
+    console.error("Collection load failed for user:", currentUserId, error);
+    return;
+  }
 
   // Auto-migrate localStorage data on first sign-in if Supabase is empty
   if (collection.length === 0) {
