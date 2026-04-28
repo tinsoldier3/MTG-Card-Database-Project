@@ -85,6 +85,29 @@
             <label for="builderDeckSelect">Build this deck</label>
             <select id="builderDeckSelect"></select>
           </div>
+          <div class="field-group">
+            <label for="builderSourceFilter">Source cards</label>
+            <select id="builderSourceFilter">
+              <option value="spares">Unsorted cards only</option>
+              <option value="collection">All collection cards</option>
+              <option value="other-decks">Other decks only</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label for="builderTypeFilter">Card type</label>
+            <select id="builderTypeFilter">
+              <option value="">All types</option>
+              <option value="land">Lands</option>
+              <option value="creature">Creatures</option>
+              <option value="instant-sorcery">Instants & Sorceries</option>
+              <option value="artifact-enchantment">Artifacts & Enchantments</option>
+              <option value="planeswalker">Planeswalkers</option>
+            </select>
+          </div>
+          <label class="builder-toggle">
+            <input type="checkbox" id="builderLegalOnlyToggle" checked />
+            Only show cards legal for this commander
+          </label>
           <div class="builder-summary" id="builderSummary">Choose a deck to start building.</div>
         </div>
       </section>

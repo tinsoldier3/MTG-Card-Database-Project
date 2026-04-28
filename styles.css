@@ -126,8 +126,21 @@ html, body {
   flex-wrap: wrap;
 }
 
+.builder-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.builder-toggle input {
+  margin: 0;
+}
+
 .builder-summary {
-  max-width: 520px;
+  flex: 1 1 320px;
+  min-width: 240px;
   font-size: 14px;
   line-height: 1.5;
   opacity: 0.8;

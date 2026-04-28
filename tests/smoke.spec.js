@@ -263,6 +263,18 @@ test("build deck view shows deck cards and lets you move a collection card into 
     set: "7ed",
     collector_number: "67",
     scryfall_id: ""
+  }, {
+    id: "other-deck-card",
+    name: "Terminate",
+    type: "Instant",
+    image: "",
+    deck: "vampires",
+    foil: false,
+    quantity: 1,
+    color_identity: ["B", "R"],
+    set: "arb",
+    collector_number: "47",
+    scryfall_id: ""
   }];
 
   await mockSupabase(page, { session: MOCK_SESSION, cards });
@@ -272,9 +284,12 @@ test("build deck view shows deck cards and lets you move a collection card into 
   await expect(page.getByRole("link", { name: "Deck Builder" })).toHaveClass(/active/);
   await expect(page.getByLabel("Build this deck")).toBeVisible();
   await page.getByLabel("Build this deck").selectOption("atraxa");
+  await expect(page.getByLabel("Source cards")).toHaveValue("spares");
+  await expect(page.getByLabel("Only show cards legal for this commander")).toBeChecked();
   await expect(page.getByText("Cards already assigned to Atraxa")).toBeVisible();
   await expect(page.getByText("Cards you can move into Atraxa")).toBeVisible();
   await expect(page.getByText("Counterspell")).toBeVisible();
+  await expect(page.getByText("Terminate")).not.toBeVisible();
 
   await page.getByRole("button", { name: "Use in deck" }).click();
 

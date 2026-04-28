@@ -273,6 +273,9 @@ function cacheElements() {
   elements.sortSelect = document.getElementById("sortSelect");
   elements.builderPanel = document.getElementById("builderPanel");
   elements.builderDeckSelect = document.getElementById("builderDeckSelect");
+  elements.builderSourceFilter = document.getElementById("builderSourceFilter");
+  elements.builderTypeFilter = document.getElementById("builderTypeFilter");
+  elements.builderLegalOnlyToggle = document.getElementById("builderLegalOnlyToggle");
   elements.builderSummary = document.getElementById("builderSummary");
   elements.signInButton = document.getElementById("signInButton");
   elements.signUpButton = document.getElementById("signUpButton");
@@ -305,6 +308,9 @@ function bindEvents() {
     localStorage.setItem(BUILDER_DECK_KEY, elements.builderDeckSelect.value);
     displayCards();
   });
+  elements.builderSourceFilter.addEventListener("change", displayCards);
+  elements.builderTypeFilter.addEventListener("change", displayCards);
+  elements.builderLegalOnlyToggle.addEventListener("change", displayCards);
   elements.signInButton.addEventListener("click", signIn);
   elements.signUpButton.addEventListener("click", signUp);
   elements.signOutButton.addEventListener("click", signOut);
@@ -1055,6 +1061,9 @@ function updateViewVisibility() {
 function displayDeckBuilder() {
   let targetDeck = normalizeDeckName(elements.builderDeckSelect.value);
   let searchQuery = elements.searchInput.value.toLowerCase().trim();
+  let sourceFilter = elements.builderSourceFilter.value;
+  let typeFilter = elements.builderTypeFilter.value;
+  let legalOnly = elements.builderLegalOnlyToggle.checked;
 
   elements.cardGrid.innerHTML = "";
 
@@ -1080,6 +1089,18 @@ function displayDeckBuilder() {
       return;
     }
 
+    if (!matchesBuilderSourceFilter(deckName, sourceFilter)) {
+      return;
+    }
+
+    if (!matchesBuilderTypeFilter(card, typeFilter)) {
+      return;
+    }
+
+    if (legalOnly && COMMANDER_DECKS[targetDeck] && !isCardLegalForCommander(card, targetDeck)) {
+      return;
+    }
+
     let nameMatch = !searchQuery || card.name.toLowerCase().includes(searchQuery);
     let typeMatch = !searchQuery || (card.type || "").toLowerCase().includes(searchQuery);
     let deckMatch = !searchQuery || deckName.toLowerCase().includes(searchQuery);
@@ -1094,6 +1115,12 @@ function displayDeckBuilder() {
     deckCards = deckCards.filter(function(entry) {
       return entry.card.name.toLowerCase().includes(searchQuery)
         || (entry.card.type || "").toLowerCase().includes(searchQuery);
+    });
+  }
+
+  if (typeFilter) {
+    deckCards = deckCards.filter(function(entry) {
+      return matchesBuilderTypeFilter(entry.card, typeFilter);
     });
   }
 
@@ -1116,7 +1143,10 @@ function displayDeckBuilder() {
     ? "Building " + getDeckDisplayLabel(targetDeck) + " with search results for \"" + searchQuery + "\"."
     : "Move cards from your collection into " + getDeckDisplayLabel(targetDeck) + ".";
   elements.builderSummary.textContent = deckCardCount + " cards in deck, "
-    + availableCardCount + " cards available elsewhere in your collection"
+    + availableCardCount + " matching candidates"
+    + " from " + getBuilderSourceSummary(sourceFilter)
+    + (typeFilter ? ", filtered to " + getBuilderTypeLabel(typeFilter).toLowerCase() : "")
+    + (legalOnly && COMMANDER_DECKS[targetDeck] ? ", commander-legal only" : "")
     + (illegalInDeckCount > 0 ? ", " + illegalInDeckCount + " outside commander color identity." : ".");
 
   let builderLayout = document.createElement("div");
@@ -1140,6 +1170,69 @@ function displayDeckBuilder() {
 
   elements.cardGrid.appendChild(builderLayout);
   bindBuilderActionButtons();
+}
+
+function matchesBuilderSourceFilter(deckName, sourceFilter) {
+  if (sourceFilter === "spares") {
+    return deckName === "unsorted";
+  }
+
+  if (sourceFilter === "other-decks") {
+    return deckName !== "unsorted" && !isBoxOrBinder(deckName);
+  }
+
+  return true;
+}
+
+function matchesBuilderTypeFilter(card, typeFilter) {
+  if (!typeFilter) {
+    return true;
+  }
+
+  let typeLine = (card.type || "").toLowerCase();
+
+  if (typeFilter === "land") {
+    return typeLine.includes("land");
+  }
+
+  if (typeFilter === "creature") {
+    return typeLine.includes("creature");
+  }
+
+  if (typeFilter === "instant-sorcery") {
+    return typeLine.includes("instant") || typeLine.includes("sorcery");
+  }
+
+  if (typeFilter === "artifact-enchantment") {
+    return typeLine.includes("artifact") || typeLine.includes("enchantment");
+  }
+
+  if (typeFilter === "planeswalker") {
+    return typeLine.includes("planeswalker");
+  }
+
+  return true;
+}
+
+function getBuilderSourceSummary(sourceFilter) {
+  if (sourceFilter === "spares") {
+    return "your unsorted cards";
+  }
+
+  if (sourceFilter === "other-decks") {
+    return "your other decks";
+  }
+
+  return "your full collection";
+}
+
+function getBuilderTypeLabel(typeFilter) {
+  if (typeFilter === "land") return "Lands";
+  if (typeFilter === "creature") return "Creatures";
+  if (typeFilter === "instant-sorcery") return "Instants & Sorceries";
+  if (typeFilter === "artifact-enchantment") return "Artifacts & Enchantments";
+  if (typeFilter === "planeswalker") return "Planeswalkers";
+  return "All types";
 }
 
 function sortEntriesForView(entries) {
