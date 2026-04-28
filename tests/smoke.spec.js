@@ -3,11 +3,12 @@ const { test, expect } = require("@playwright/test");
 // Intercept the Supabase CDN script and replace it with a minimal mock.
 // session: null → unauthenticated; pass a session object to simulate sign-in.
 // cards: array of row-shaped objects returned by from("cards").select("*").
-function mockSupabase(page, { session = null, cards = [], selectError = null } = {}) {
+function mockSupabase(page, { session = null, cards = [], selectError = null, pagedSelectError = null } = {}) {
   return page.route("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2", async (route) => {
     const sessionJson = JSON.stringify(session);
     const cardsJson = JSON.stringify(cards);
     const selectErrorJson = JSON.stringify(selectError);
+    const pagedSelectErrorJson = JSON.stringify(pagedSelectError);
     await route.fulfill({
       contentType: "application/javascript",
       body: `
@@ -27,6 +28,9 @@ function mockSupabase(page, { session = null, cards = [], selectError = null } =
                 function buildSelectResult(start, end) {
                   if (${selectErrorJson}) {
                     return Promise.resolve({ data: null, error: ${selectErrorJson} });
+                  }
+                  if (start !== null && end !== null && ${pagedSelectErrorJson}) {
+                    return Promise.resolve({ data: null, error: ${pagedSelectErrorJson} });
                   }
                   const slicedCards = start === null || end === null
                     ? ${cardsJson}
@@ -205,4 +209,31 @@ test("loads more than one batch of cards", async ({ page }) => {
 
   await expect(page.locator("#headerText")).toContainText("1001");
   await expect(page.getByText("Card 1000")).toBeVisible();
+});
+
+test("falls back to a simple query if the paged query fails", async ({ page }) => {
+  const cards = [{
+    id: "fallback-card",
+    name: "Counterspell",
+    type: "Instant",
+    image: "",
+    deck: "atraxa",
+    foil: false,
+    quantity: 1,
+    color_identity: ["U"],
+    set: "7ed",
+    collector_number: "67",
+    scryfall_id: ""
+  }];
+
+  await mockSupabase(page, {
+    session: MOCK_SESSION,
+    cards,
+    pagedSelectError: { message: "ordered query failed" }
+  });
+  await mockScryfall(page);
+  await page.goto("/");
+
+  await expect(page.getByText("Counterspell")).toBeVisible();
+  await expect(page.locator("#statusMessage")).toContainText("Loaded your cards with a compatibility fallback.");
 });

@@ -1,5 +1,6 @@
 const STORAGE_KEY = "mtgCollection";
 const COLLECTION_BATCH_SIZE = 1000;
+const COLLECTION_LOAD_TIMEOUT_MS = 8000;
 const SUPABASE_URL = "https://sxilslbrrrxhysqthdre.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4aWxzbGJycnJ4aHlzcXRoZHJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1NTc3NzQsImV4cCI6MjA5MjEzMzc3NH0.vRPVR1H0TxBhnu9YRikxQ9nd48mxK8v0Z-bY-LBl5wU";
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -322,7 +323,7 @@ async function loadCollection() {
 
   // The real Supabase client returns a query builder; test mocks may return a Promise directly.
   if (!selectQuery || typeof selectQuery.eq !== "function") {
-    let { data, error } = await selectQuery;
+    let { data, error } = await withTimeout(selectQuery, COLLECTION_LOAD_TIMEOUT_MS, "Timed out loading collection.");
     if (error) {
       console.error("Unable to load collection.", error);
       throw error;
@@ -330,6 +331,15 @@ async function loadCollection() {
     return safelyMapRowsToCards(data || []);
   }
 
+  try {
+    return await loadCollectionInBatches();
+  } catch (error) {
+    console.warn("Falling back to simple collection query.", error);
+    return await loadCollectionWithSimpleQuery(error);
+  }
+}
+
+async function loadCollectionInBatches() {
   let rows = [];
   let fromIndex = 0;
 
@@ -341,7 +351,7 @@ async function loadCollection() {
       .order("created_at", { ascending: true })
       .range(fromIndex, fromIndex + COLLECTION_BATCH_SIZE - 1);
 
-    let { data, error } = await query;
+    let { data, error } = await withTimeout(query, COLLECTION_LOAD_TIMEOUT_MS, "Timed out loading collection.");
     if (error) {
       console.error("Unable to load collection.", error);
       throw error;
@@ -358,6 +368,33 @@ async function loadCollection() {
   }
 
   return safelyMapRowsToCards(rows);
+}
+
+async function loadCollectionWithSimpleQuery(originalError) {
+  let simpleQuery = supabaseClient.from("cards").select("*");
+  let { data, error } = await withTimeout(simpleQuery, COLLECTION_LOAD_TIMEOUT_MS, "Timed out loading collection.");
+
+  if (error) {
+    console.error("Unable to load collection with fallback query.", error);
+    throw error;
+  }
+
+  if (originalError) {
+    showStatusMessage("Loaded your cards with a compatibility fallback.");
+  }
+
+  return safelyMapRowsToCards(data || []);
+}
+
+function withTimeout(promise, timeoutMs, message) {
+  return Promise.race([
+    promise,
+    new Promise(function(_, reject) {
+      setTimeout(function() {
+        reject(new Error(message));
+      }, timeoutMs);
+    })
+  ]);
 }
 
 function getCollectionLoadErrorMessage(error) {
