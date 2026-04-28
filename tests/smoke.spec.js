@@ -237,3 +237,47 @@ test("falls back to a simple query if the paged query fails", async ({ page }) =
   await expect(page.getByText("Counterspell")).toBeVisible();
   await expect(page.locator("#statusMessage")).toContainText("Loaded your cards with a compatibility fallback.");
 });
+
+test("build deck view shows deck cards and lets you move a collection card into the deck", async ({ page }) => {
+  const cards = [{
+    id: "deck-card",
+    name: "Atraxa, Praetors' Voice",
+    type: "Legendary Creature",
+    image: "",
+    deck: "atraxa",
+    foil: false,
+    quantity: 1,
+    color_identity: ["W", "U", "B", "G"],
+    set: "2xm",
+    collector_number: "190",
+    scryfall_id: ""
+  }, {
+    id: "collection-card",
+    name: "Counterspell",
+    type: "Instant",
+    image: "",
+    deck: "unsorted",
+    foil: false,
+    quantity: 1,
+    color_identity: ["U"],
+    set: "7ed",
+    collector_number: "67",
+    scryfall_id: ""
+  }];
+
+  await mockSupabase(page, { session: MOCK_SESSION, cards });
+  await mockScryfall(page);
+  await page.goto("/#builder");
+
+  await expect(page.getByRole("link", { name: "Deck Builder" })).toHaveClass(/active/);
+  await expect(page.getByLabel("Build this deck")).toBeVisible();
+  await page.getByLabel("Build this deck").selectOption("atraxa");
+  await expect(page.getByText("Cards already assigned to Atraxa")).toBeVisible();
+  await expect(page.getByText("Cards you can move into Atraxa")).toBeVisible();
+  await expect(page.getByText("Counterspell")).toBeVisible();
+
+  await page.getByRole("button", { name: "Use in deck" }).click();
+
+  await expect(page.locator("#statusMessage")).toContainText("Counterspell moved from Unsorted to Atraxa.");
+  await expect(page.getByText("No other collection cards are available right now.")).toBeVisible();
+});

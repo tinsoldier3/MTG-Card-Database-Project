@@ -55,6 +55,7 @@
         </div>
         <nav class="main-nav">
           <a href="#decks" class="nav-link active" id="decksLink">Decks</a>
+          <a href="#builder" class="nav-link" id="builderLink">Deck Builder</a>
           <a href="#boxes" class="nav-link" id="boxesLink">Collection Boxes</a>
           <a href="#sets" class="nav-link" id="setsLink">By Set</a>
         </nav>
@@ -70,13 +71,23 @@
         />
       </section>
 
-      <select id="sortSelect">
+<select id="sortSelect">
   <option value="name">Sort: Name (A–Z)</option>
   <option value="type">Sort: Type</option>
   <option value="color">Sort: Color Identity</option>
   <option value="set">Sort: Set</option>
   <option value="collector">Sort: Collector Number</option>
 </select>
+
+      <section class="builder-panel hidden" id="builderPanel">
+        <div class="builder-toolbar">
+          <div class="field-group">
+            <label for="builderDeckSelect">Build this deck</label>
+            <select id="builderDeckSelect"></select>
+          </div>
+          <div class="builder-summary" id="builderSummary">Choose a deck to start building.</div>
+        </div>
+      </section>
 
 
       <section class="progress-container hidden" id="progressContainer" aria-live="polite">

@@ -1,4 +1,5 @@
 const STORAGE_KEY = "mtgCollection";
+const BUILDER_DECK_KEY = "mtgBuilderDeck";
 const COLLECTION_BATCH_SIZE = 1000;
 const COLLECTION_LOAD_TIMEOUT_MS = 8000;
 const SUPABASE_URL = "https://sxilslbrrrxhysqthdre.supabase.co";
@@ -197,7 +198,9 @@ function getSetDisplayLabel(setCode) {
 
 function setCurrentViewFromHash() {
   const hash = window.location.hash.substring(1);
-  if (hash === "boxes") {
+  if (hash === "builder") {
+    currentView = "builder";
+  } else if (hash === "boxes") {
     currentView = "boxes";
   } else if (hash === "sets") {
     currentView = "sets";
@@ -206,6 +209,7 @@ function setCurrentViewFromHash() {
   }
   updateNavActive();
   const titles = {
+    builder: "Deck Builder - My MTG Collection",
     boxes: "Collection Boxes - My MTG Collection",
     sets: "By Set - My MTG Collection",
     decks: "Decks - My MTG Collection"
@@ -261,11 +265,15 @@ function cacheElements() {
   elements.importDeckMergeButton = document.getElementById("importDeckMergeButton");
   elements.importCollectionButton = document.getElementById("importCollectionButton");
   elements.decksLink = document.getElementById("decksLink");
+  elements.builderLink = document.getElementById("builderLink");
   elements.boxesLink = document.getElementById("boxesLink");
   elements.setsLink = document.getElementById("setsLink");
   elements.headerText = document.getElementById("headerText");
   elements.themeToggle = document.getElementById("themeToggle");
   elements.sortSelect = document.getElementById("sortSelect");
+  elements.builderPanel = document.getElementById("builderPanel");
+  elements.builderDeckSelect = document.getElementById("builderDeckSelect");
+  elements.builderSummary = document.getElementById("builderSummary");
   elements.signInButton = document.getElementById("signInButton");
   elements.signUpButton = document.getElementById("signUpButton");
   elements.signOutButton = document.getElementById("signOutButton");
@@ -293,6 +301,10 @@ function bindEvents() {
   window.addEventListener("hashchange", handleHashChange);
   elements.themeToggle.addEventListener("click", toggleTheme);
   elements.sortSelect.addEventListener("change", displayCards);
+  elements.builderDeckSelect.addEventListener("change", function() {
+    localStorage.setItem(BUILDER_DECK_KEY, elements.builderDeckSelect.value);
+    displayCards();
+  });
   elements.signInButton.addEventListener("click", signIn);
   elements.signUpButton.addEventListener("click", signUp);
   elements.signOutButton.addEventListener("click", signOut);
@@ -309,11 +321,13 @@ function bindEvents() {
 function handleHashChange() {
   setCurrentViewFromHash();
   populateDeckFilter();
+  populateBuilderDeckSelect();
   displayCards();
 }
 
 function updateNavActive() {
   elements.decksLink.classList.toggle("active", currentView === "decks");
+  elements.builderLink.classList.toggle("active", currentView === "builder");
   elements.boxesLink.classList.toggle("active", currentView === "boxes");
   elements.setsLink.classList.toggle("active", currentView === "sets");
 }
@@ -553,6 +567,53 @@ function populateDeckFilter() {
   elements.deckFilter.value = deckNames.includes(selectedValue) ? selectedValue : "";
 }
 
+function populateBuilderDeckSelect() {
+  let selectedValue = elements.builderDeckSelect.value || localStorage.getItem(BUILDER_DECK_KEY) || "";
+  let deckNames = getBuilderDeckNames();
+
+  elements.builderDeckSelect.innerHTML = "";
+
+  if (deckNames.length === 0) {
+    let emptyOption = document.createElement("option");
+    emptyOption.value = "";
+    emptyOption.textContent = "No decks yet";
+    elements.builderDeckSelect.appendChild(emptyOption);
+    elements.builderDeckSelect.value = "";
+    return;
+  }
+
+  deckNames.forEach(function(deckName) {
+    let option = document.createElement("option");
+    option.value = deckName;
+    option.textContent = getDeckDisplayLabel(deckName);
+    elements.builderDeckSelect.appendChild(option);
+  });
+
+  let nextValue = deckNames.includes(selectedValue) ? selectedValue : deckNames[0];
+  elements.builderDeckSelect.value = nextValue;
+  localStorage.setItem(BUILDER_DECK_KEY, nextValue);
+}
+
+function getBuilderDeckNames() {
+  let deckNames = Array.from(new Set(collection
+    .map(function(card) {
+      return normalizeDeckName(card.deck || "unsorted");
+    })
+    .filter(function(deckName) {
+      return deckName !== "unsorted" && !isBoxOrBinder(deckName);
+    })));
+
+  Object.keys(COMMANDER_DECKS).forEach(function(deckName) {
+    if (!deckNames.includes(deckName)) {
+      deckNames.push(deckName);
+    }
+  });
+
+  return deckNames.sort(function(a, b) {
+    return getDeckDisplayLabel(a).localeCompare(getDeckDisplayLabel(b));
+  });
+}
+
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -657,6 +718,14 @@ function getDeckInputId(index) {
 }
 
 function displayCards() {
+  updateViewVisibility();
+
+  if (currentView === "builder") {
+    populateBuilderDeckSelect();
+    displayDeckBuilder();
+    return;
+  }
+
   let selectedCommander = elements.commanderFilter.value;
   let selectedDeck = elements.deckFilter.value;
   let searchQuery = elements.searchInput.value.toLowerCase().trim();
@@ -979,6 +1048,214 @@ decks[deckName].sort(function(a, b) {
   bindCardActionButtons();
 }
 
+function updateViewVisibility() {
+  elements.builderPanel.classList.toggle("hidden", currentView !== "builder");
+}
+
+function displayDeckBuilder() {
+  let targetDeck = normalizeDeckName(elements.builderDeckSelect.value);
+  let searchQuery = elements.searchInput.value.toLowerCase().trim();
+
+  elements.cardGrid.innerHTML = "";
+
+  if (!targetDeck) {
+    elements.headerText.innerHTML = "<span id='cardCount'>0</span> cards in your collection";
+    elements.filterNote.textContent = "Create or import a deck first, then come back here to build with your collection.";
+    elements.builderSummary.textContent = "No decks are available to build yet.";
+    let emptyState = document.createElement("p");
+    emptyState.className = "empty-state";
+    emptyState.textContent = "No decks available yet.";
+    elements.cardGrid.appendChild(emptyState);
+    return;
+  }
+
+  let deckCards = [];
+  let availableCards = [];
+
+  collection.forEach(function(card, index) {
+    let deckName = normalizeDeckName(card.deck || "unsorted");
+
+    if (deckName === targetDeck) {
+      deckCards.push({ card: card, index: index, deckName: deckName });
+      return;
+    }
+
+    let nameMatch = !searchQuery || card.name.toLowerCase().includes(searchQuery);
+    let typeMatch = !searchQuery || (card.type || "").toLowerCase().includes(searchQuery);
+    let deckMatch = !searchQuery || deckName.toLowerCase().includes(searchQuery);
+    if (searchQuery && !nameMatch && !typeMatch && !deckMatch) {
+      return;
+    }
+
+    availableCards.push({ card: card, index: index, deckName: deckName });
+  });
+
+  if (searchQuery) {
+    deckCards = deckCards.filter(function(entry) {
+      return entry.card.name.toLowerCase().includes(searchQuery)
+        || (entry.card.type || "").toLowerCase().includes(searchQuery);
+    });
+  }
+
+  sortEntriesForView(deckCards);
+  sortEntriesForView(availableCards);
+
+  let deckCardCount = deckCards.reduce(function(sum, entry) {
+    return sum + (entry.card.quantity || 1);
+  }, 0);
+  let availableCardCount = availableCards.reduce(function(sum, entry) {
+    return sum + (entry.card.quantity || 1);
+  }, 0);
+  let illegalInDeckCount = deckCards.filter(function(entry) {
+    let legality = getDeckLegality(entry.card);
+    return legality.checked && !legality.legal;
+  }).length;
+
+  elements.headerText.innerHTML = "<span id='cardCount'>" + deckCardCount + "</span> cards in " + escapeHtml(getDeckDisplayLabel(targetDeck));
+  elements.filterNote.textContent = searchQuery
+    ? "Building " + getDeckDisplayLabel(targetDeck) + " with search results for \"" + searchQuery + "\"."
+    : "Move cards from your collection into " + getDeckDisplayLabel(targetDeck) + ".";
+  elements.builderSummary.textContent = deckCardCount + " cards in deck, "
+    + availableCardCount + " cards available elsewhere in your collection"
+    + (illegalInDeckCount > 0 ? ", " + illegalInDeckCount + " outside commander color identity." : ".");
+
+  let builderLayout = document.createElement("div");
+  builderLayout.className = "builder-layout";
+
+  builderLayout.appendChild(createBuilderColumn(
+    "In Deck",
+    deckCards,
+    "Cards already assigned to " + getDeckDisplayLabel(targetDeck),
+    function(entry) { return createBuilderDeckCard(entry, targetDeck); },
+    searchQuery ? "No deck cards match this search." : "No cards are assigned to this deck yet."
+  ));
+
+  builderLayout.appendChild(createBuilderColumn(
+    "Available Collection Cards",
+    availableCards,
+    "Cards you can move into " + getDeckDisplayLabel(targetDeck),
+    function(entry) { return createBuilderAvailableCard(entry, targetDeck); },
+    searchQuery ? "No available cards match this search." : "No other collection cards are available right now."
+  ));
+
+  elements.cardGrid.appendChild(builderLayout);
+  bindBuilderActionButtons();
+}
+
+function sortEntriesForView(entries) {
+  let sortMode = elements.sortSelect.value;
+
+  entries.sort(function(a, b) {
+    let cardA = a.card;
+    let cardB = b.card;
+
+    switch (sortMode) {
+      case "type":
+        return (cardA.type || "").localeCompare(cardB.type || "");
+      case "color":
+        return (cardA.colorIdentity.join("") || "").localeCompare(cardB.colorIdentity.join("") || "");
+      case "set":
+        return (cardA.set || "").localeCompare(cardB.set || "");
+      case "collector":
+        return (cardA.collectorNumber || "").localeCompare(cardB.collectorNumber || "", undefined, { numeric: true });
+      case "name":
+      default:
+        return cardA.name.localeCompare(cardB.name);
+    }
+  });
+}
+
+function createBuilderColumn(title, entries, description, renderCard, emptyMessage) {
+  let column = document.createElement("section");
+  column.className = "builder-column";
+
+  let heading = document.createElement("h2");
+  heading.className = "deck-heading";
+  heading.textContent = title + " (" + entries.reduce(function(sum, entry) {
+    return sum + (entry.card.quantity || 1);
+  }, 0) + ")";
+  column.appendChild(heading);
+
+  let detail = document.createElement("p");
+  detail.className = "deck-meta";
+  detail.textContent = description;
+  column.appendChild(detail);
+
+  let grid = document.createElement("div");
+  grid.className = "builder-card-grid";
+  column.appendChild(grid);
+
+  if (entries.length === 0) {
+    let emptyState = document.createElement("p");
+    emptyState.className = "empty-state";
+    emptyState.textContent = emptyMessage;
+    grid.appendChild(emptyState);
+    return column;
+  }
+
+  entries.forEach(function(entry) {
+    grid.appendChild(renderCard(entry));
+  });
+
+  return column;
+}
+
+function createBuilderDeckCard(entry, targetDeck) {
+  let card = entry.card;
+  let legality = getDeckLegality(card);
+  let safeCardName = escapeHtml(card.name);
+  let cardElement = document.createElement("article");
+  cardElement.className = "builder-card" + (legality.checked && !legality.legal ? " card-illegal" : "");
+  cardElement.innerHTML = [
+    card.image ? '<img src="' + escapeHtml(card.image) + '" alt="' + safeCardName + ' card image" />' : "",
+    '<div class="card-name">' + safeCardName + "</div>",
+    '<div class="card-type">' + escapeHtml(card.type || "Unknown type") + "</div>",
+    '<div class="card-colors">Qty: ' + (card.quantity || 1) + " • " + escapeHtml(getColorIdentityLabel(card.colorIdentity)) + "</div>",
+    getPrintLabel(card) ? '<div class="card-print">Print: ' + escapeHtml(getPrintLabel(card)) + "</div>" : "",
+    legality.checked && !legality.legal ? '<div class="status-badge illegal">Outside ' + escapeHtml(getDeckDisplayLabel(targetDeck)) + " color identity</div>" : "",
+    '<div class="builder-card-actions">',
+    '<button type="button" data-builder-action="remove-from-deck" data-index="' + entry.index + '">Move to unsorted</button>',
+    "</div>"
+  ].join("");
+  return cardElement;
+}
+
+function createBuilderAvailableCard(entry, targetDeck) {
+  let card = entry.card;
+  let safeCardName = escapeHtml(card.name);
+  let locationLabel = getDeckDisplayLabel(entry.deckName);
+  let legalForDeck = isCardLegalForCommander(card, targetDeck);
+  let cardElement = document.createElement("article");
+  cardElement.className = "builder-card";
+  cardElement.innerHTML = [
+    card.image ? '<img src="' + escapeHtml(card.image) + '" alt="' + safeCardName + ' card image" />' : "",
+    '<div class="card-name">' + safeCardName + "</div>",
+    '<div class="card-type">' + escapeHtml(card.type || "Unknown type") + "</div>",
+    '<div class="card-colors">Qty: ' + (card.quantity || 1) + " • " + escapeHtml(getColorIdentityLabel(card.colorIdentity)) + "</div>",
+    '<div class="card-deck-label">Currently in ' + escapeHtml(locationLabel) + "</div>",
+    getPrintLabel(card) ? '<div class="card-print">Print: ' + escapeHtml(getPrintLabel(card)) + "</div>" : "",
+    COMMANDER_DECKS[targetDeck] && !legalForDeck ? '<div class="status-badge illegal">Outside commander color identity</div>' : "",
+    '<div class="builder-card-actions">',
+    '<button type="button" data-builder-action="add-to-deck" data-index="' + entry.index + '" data-target-deck="' + escapeHtml(targetDeck) + '">Use in deck</button>',
+    "</div>"
+  ].join("");
+  return cardElement;
+}
+
+function bindBuilderActionButtons() {
+  document.querySelectorAll("[data-builder-action='add-to-deck']").forEach(function(button) {
+    button.addEventListener("click", function() {
+      moveCardToDeck(Number(button.dataset.index), button.dataset.targetDeck);
+    });
+  });
+
+  document.querySelectorAll("[data-builder-action='remove-from-deck']").forEach(function(button) {
+    button.addEventListener("click", function() {
+      moveCardToDeck(Number(button.dataset.index), "unsorted");
+    });
+  });
+}
+
 function bindCardActionButtons() {
   document.querySelectorAll("[data-action='move']").forEach(function(button) {
     button.addEventListener("click", function() {
@@ -1162,18 +1439,25 @@ async function updateCardDeck(index) {
   if (!input) return;
 
   let nextDeckName = normalizeDeckName(input.value);
+  await moveCardToDeck(index, nextDeckName);
+}
+
+async function moveCardToDeck(index, nextDeckName) {
   let previousCard = collection[index];
-  let updatedCard = { ...previousCard, deck: nextDeckName };
+  let normalizedDeckName = normalizeDeckName(nextDeckName);
+  let updatedCard = { ...previousCard, deck: normalizedDeckName };
   collection[index] = updatedCard;
   populateDeckFilter();
+  populateBuilderDeckSelect();
   displayCards();
-  showStatusMessage(updatedCard.name + " moved from " + getDeckDisplayLabel(previousCard.deck || "unsorted") + " to " + getDeckDisplayLabel(nextDeckName) + ".");
+  showStatusMessage(updatedCard.name + " moved from " + getDeckDisplayLabel(previousCard.deck || "unsorted") + " to " + getDeckDisplayLabel(normalizedDeckName) + ".");
   try {
     await dbUpsertCards([updatedCard]);
   } catch (error) {
     console.error("Could not move card.", error);
     collection[index] = previousCard;
     populateDeckFilter();
+    populateBuilderDeckSelect();
     displayCards();
     showStatusMessage("Could not move " + updatedCard.name + ". Please try again.");
   }
@@ -1741,6 +2025,7 @@ function handleRealtimeEvent(payload) {
     if (!alreadyPresent) {
       collection.push(rowToCard(payload.new));
       populateDeckFilter();
+      populateBuilderDeckSelect();
       displayCards();
     }
   } else if (eventType === "UPDATE") {
@@ -1750,6 +2035,7 @@ function handleRealtimeEvent(payload) {
       if (JSON.stringify(collection[index]) !== JSON.stringify(updated)) {
         collection[index] = updated;
         populateDeckFilter();
+        populateBuilderDeckSelect();
         displayCards();
       }
     }
@@ -1758,6 +2044,7 @@ function handleRealtimeEvent(payload) {
     if (index !== -1) {
       collection.splice(index, 1);
       populateDeckFilter();
+      populateBuilderDeckSelect();
       displayCards();
     }
   }
@@ -1817,6 +2104,7 @@ async function initApp(email) {
     collection = [];
     populateCommanderFilter();
     populateDeckFilter();
+    populateBuilderDeckSelect();
     let loadErrorMessage = getCollectionLoadErrorMessage(error);
     elements.cardGrid.innerHTML = "<p class='empty-state'>" + escapeHtml(loadErrorMessage) + "</p>";
     showStatusMessage(loadErrorMessage);
@@ -1846,6 +2134,7 @@ async function initApp(email) {
   setCurrentViewFromHash();
   populateCommanderFilter();
   populateDeckFilter();
+  populateBuilderDeckSelect();
   displayCards();
   refreshMissingColorIdentities();
   loadSetNames();
