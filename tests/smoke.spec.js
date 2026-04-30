@@ -296,3 +296,72 @@ test("build deck view shows deck cards and lets you move a collection card into 
   await expect(page.locator("#statusMessage")).toContainText("Counterspell moved from Unsorted to Atraxa.");
   await expect(page.getByText("No other collection cards are available right now.")).toBeVisible();
 });
+
+test("deck detail page groups cards by type and links back to decks", async ({ page }) => {
+  const cards = [{
+    id: "commander-card",
+    name: "Atraxa, Praetors' Voice",
+    type: "Legendary Creature — Phyrexian Angel Horror",
+    image: "",
+    deck: "atraxa",
+    foil: false,
+    quantity: 1,
+    color_identity: ["W", "U", "B", "G"],
+    set: "2xm",
+    collector_number: "190",
+    scryfall_id: ""
+  }, {
+    id: "creature-card",
+    name: "Eternal Witness",
+    type: "Creature — Human Shaman",
+    image: "",
+    deck: "atraxa",
+    foil: false,
+    quantity: 2,
+    color_identity: ["G"],
+    set: "mma",
+    collector_number: "119",
+    scryfall_id: ""
+  }, {
+    id: "instant-card",
+    name: "Counterspell",
+    type: "Instant",
+    image: "",
+    deck: "atraxa",
+    foil: false,
+    quantity: 1,
+    color_identity: ["U"],
+    set: "7ed",
+    collector_number: "67",
+    scryfall_id: ""
+  }, {
+    id: "land-card",
+    name: "Command Tower",
+    type: "Land",
+    image: "",
+    deck: "atraxa",
+    foil: false,
+    quantity: 1,
+    color_identity: [],
+    set: "c11",
+    collector_number: "318",
+    scryfall_id: ""
+  }];
+
+  await mockSupabase(page, { session: MOCK_SESSION, cards });
+  await mockScryfall(page);
+  await page.goto("/#deck/atraxa");
+
+  await expect(page.getByRole("link", { name: "Decks", exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole("heading", { name: "Atraxa", level: 2 })).toBeVisible();
+  await expect(page.locator(".deck-detail-commander")).toContainText("Atraxa, Praetors' Voice");
+  await expect(page.getByRole("heading", { name: /Commander \(1\)/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Creatures \(2\)/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Instants \(1\)/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Lands \(1\)/ })).toBeVisible();
+  await expect(page.locator(".card-name", { hasText: "Atraxa, Praetors' Voice" }).first()).toBeVisible();
+  await expect(page.locator(".card-name", { hasText: "Eternal Witness" })).toBeVisible();
+
+  await page.getByRole("link", { name: "← All Decks" }).click();
+  await expect(page).toHaveURL(/#decks?$/);
+});

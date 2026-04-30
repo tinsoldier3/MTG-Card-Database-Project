@@ -121,6 +121,7 @@ let collection = [];
 let currentUserId = null;
 let statusMessageTimeout;
 let currentView = "decks";
+let currentDeckDetail = "";
 let setNameCache = {};
 let realtimeChannel = null;
 let isPasswordRecovery = false;
@@ -204,6 +205,9 @@ function setCurrentViewFromHash() {
     currentView = "boxes";
   } else if (hash === "sets") {
     currentView = "sets";
+  } else if (hash.startsWith("deck/")) {
+    currentView = "deck-detail";
+    currentDeckDetail = normalizeDeckName(hash.substring(5));
   } else {
     currentView = "decks";
   }
@@ -212,9 +216,10 @@ function setCurrentViewFromHash() {
     builder: "Deck Builder - My MTG Collection",
     boxes: "Collection Boxes - My MTG Collection",
     sets: "By Set - My MTG Collection",
+    "deck-detail": getDeckDisplayLabel(currentDeckDetail) + " - My MTG Collection",
     decks: "Decks - My MTG Collection"
   };
-  document.title = titles[currentView];
+  document.title = titles[currentView] || "My MTG Collection";
 }
 
 function initializeTheme() {
@@ -332,7 +337,7 @@ function handleHashChange() {
 }
 
 function updateNavActive() {
-  elements.decksLink.classList.toggle("active", currentView === "decks");
+  elements.decksLink.classList.toggle("active", currentView === "decks" || currentView === "deck-detail");
   elements.builderLink.classList.toggle("active", currentView === "builder");
   elements.boxesLink.classList.toggle("active", currentView === "boxes");
   elements.setsLink.classList.toggle("active", currentView === "sets");
@@ -732,6 +737,11 @@ function displayCards() {
     return;
   }
 
+  if (currentView === "deck-detail") {
+    displayDeckDetail();
+    return;
+  }
+
   let selectedCommander = elements.commanderFilter.value;
   let selectedDeck = elements.deckFilter.value;
   let searchQuery = elements.searchInput.value.toLowerCase().trim();
@@ -958,9 +968,15 @@ if (searchQuery) {
       return legality.checked && !legality.legal;
     }).length;
 
+    let deckCardCount = decks[deckName].reduce(function(sum, e) { return sum + (e.card.quantity || 1); }, 0);
     let deckHeader = document.createElement("h2");
     deckHeader.className = "deck-heading";
-    deckHeader.textContent = getDeckDisplayLabel(deckName) + " (" + decks[deckName].reduce(function(sum, e) { return sum + (e.card.quantity || 1); }, 0) + " cards)";
+    let deckHeadingLink = document.createElement("a");
+    deckHeadingLink.href = "#deck/" + encodeURIComponent(deckName);
+    deckHeadingLink.className = "deck-heading-link";
+    deckHeadingLink.textContent = getDeckDisplayLabel(deckName);
+    deckHeader.appendChild(deckHeadingLink);
+    deckHeader.appendChild(document.createTextNode(" (" + deckCardCount + " cards)"));
     deckSection.appendChild(deckHeader);
 
     if (COMMANDER_DECKS[deckName]) {
@@ -1056,6 +1072,153 @@ decks[deckName].sort(function(a, b) {
 
 function updateViewVisibility() {
   elements.builderPanel.classList.toggle("hidden", currentView !== "builder");
+}
+
+const DECK_TYPE_CATEGORIES = ["Commander", "Creatures", "Planeswalkers", "Instants", "Sorceries", "Artifacts", "Enchantments", "Lands", "Other"];
+
+function getDeckTypeCategory(card, deckName) {
+  let commanders = (COMMANDER_DECKS[deckName] && COMMANDER_DECKS[deckName].commander) || [];
+  if (commanders.includes(card.name)) return "Commander";
+  let type = (card.type || "").toLowerCase();
+  if (type.includes("creature")) return "Creatures";
+  if (type.includes("planeswalker")) return "Planeswalkers";
+  if (type.includes("instant")) return "Instants";
+  if (type.includes("sorcery")) return "Sorceries";
+  if (type.includes("artifact")) return "Artifacts";
+  if (type.includes("enchantment")) return "Enchantments";
+  if (type.includes("land")) return "Lands";
+  return "Other";
+}
+
+function displayDeckDetail() {
+  elements.cardGrid.innerHTML = "";
+
+  let deckEntries = [];
+  collection.forEach(function(card, index) {
+    if (normalizeDeckName(card.deck || "unsorted") === currentDeckDetail) {
+      deckEntries.push({ card: card, index: index });
+    }
+  });
+
+  let displayLabel = getDeckDisplayLabel(currentDeckDetail);
+  let commanderDeck = COMMANDER_DECKS[currentDeckDetail];
+  let totalCards = deckEntries.reduce(function(sum, e) { return sum + (e.card.quantity || 1); }, 0);
+
+  let backLink = document.createElement("a");
+  backLink.href = "#decks";
+  backLink.className = "deck-detail-back";
+  backLink.textContent = "← All Decks";
+  elements.cardGrid.appendChild(backLink);
+
+  let header = document.createElement("div");
+  header.className = "deck-detail-header";
+
+  let titleEl = document.createElement("h2");
+  titleEl.className = "deck-detail-title";
+  titleEl.textContent = displayLabel;
+  header.appendChild(titleEl);
+
+  let meta = document.createElement("div");
+  meta.className = "deck-detail-meta";
+
+  if (commanderDeck) {
+    let commanderNames = commanderDeck.commander.join(" & ");
+    let colorPips = commanderDeck.colors.map(function(c) {
+      return '<span class="color-pip color-pip-' + c.toLowerCase() + '" title="' + c + '"></span>';
+    }).join("");
+    meta.innerHTML = '<span class="deck-detail-commander">Commander: ' + escapeHtml(commanderNames) + '</span>'
+      + '<span class="deck-detail-colors">' + colorPips + '</span>';
+  }
+
+  let illegalCount = deckEntries.filter(function(e) {
+    let legality = getDeckLegality(e.card);
+    return legality.checked && !legality.legal;
+  }).length;
+
+  let statsEl = document.createElement("div");
+  statsEl.className = "deck-detail-stats";
+  statsEl.textContent = totalCards + " cards";
+  if (illegalCount > 0) {
+    statsEl.textContent += " • " + illegalCount + " outside color identity";
+  }
+  header.appendChild(meta);
+  header.appendChild(statsEl);
+  elements.cardGrid.appendChild(header);
+
+  if (deckEntries.length === 0) {
+    let empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "No cards in this deck yet.";
+    elements.cardGrid.appendChild(empty);
+    return;
+  }
+
+  let groups = {};
+  DECK_TYPE_CATEGORIES.forEach(function(cat) { groups[cat] = []; });
+  deckEntries.forEach(function(entry) {
+    let cat = getDeckTypeCategory(entry.card, currentDeckDetail);
+    groups[cat].push(entry);
+  });
+
+  DECK_TYPE_CATEGORIES.forEach(function(cat) {
+    let entries = groups[cat];
+    if (entries.length === 0) return;
+
+    entries.sort(function(a, b) { return a.card.name.localeCompare(b.card.name); });
+
+    let catCount = entries.reduce(function(sum, e) { return sum + (e.card.quantity || 1); }, 0);
+    let section = document.createElement("section");
+    section.className = "deck-detail-section";
+
+    let heading = document.createElement("h3");
+    heading.className = "deck-detail-section-heading";
+    heading.textContent = cat + " (" + catCount + ")";
+    section.appendChild(heading);
+
+    let grid = document.createElement("div");
+    grid.className = "card-grid";
+    section.appendChild(grid);
+
+    entries.forEach(function(entry) {
+      let card = entry.card;
+      let index = entry.index;
+      let legality = getDeckLegality(card);
+      let deckInputId = getDeckInputId(index);
+      let safeCardName = escapeHtml(card.name);
+      let safeTypeLine = escapeHtml(card.type || "");
+      let safeDeckName = escapeHtml(card.deck || "unsorted");
+      let safeImage = escapeHtml(card.image || "");
+
+      let newCard = document.createElement("div");
+      newCard.className = legality.checked && !legality.legal ? "card card-illegal" : "card";
+      newCard.innerHTML = [
+        '<img src="' + safeImage + '" alt="' + safeCardName + ' card image" />',
+        '<div class="card-name">' + safeCardName + ' <span class="card-qty" data-qty-badge="' + index + '"' + (card.quantity && card.quantity > 1 ? '' : ' style="display:none"') + '>(' + (card.quantity || 1) + 'x)</span></div>',
+        (card.foil ? '<div class="card-foil">✨ Foil</div>' : ''),
+        '<div class="card-type">' + safeTypeLine + '</div>',
+        getPrintLabel(card) ? '<div class="card-print">Print: ' + escapeHtml(getPrintLabel(card)) + '</div>' : "",
+        '<div class="card-colors">Color identity: ' + getColorIdentityLabel(card.colorIdentity) + '</div>',
+        legality.checked && !legality.legal ? '<div class="status-badge illegal">Illegal for this deck</div>' : "",
+        '<div class="card-controls">',
+        '<div class="qty-stepper">',
+        '<button type="button" data-action="qty-down" data-index="' + index + '" aria-label="Decrease quantity of ' + safeCardName + '">−</button>',
+        '<span class="qty-value" data-qty-index="' + index + '">' + (card.quantity || 1) + '</span>',
+        '<button type="button" data-action="qty-up" data-index="' + index + '" aria-label="Increase quantity of ' + safeCardName + '">+</button>',
+        '</div>',
+        '<input type="text" id="' + deckInputId + '" list="deckOptions" value="' + safeDeckName + '" aria-label="Deck name for ' + safeCardName + '" />',
+        '<button type="button" data-action="move" data-index="' + index + '">Move to deck</button>',
+        '<input type="number" class="qty-input" min="1" value="' + (card.quantity || 1) + '" aria-label="Quantity for ' + safeCardName + '" data-qty-index="' + index + '" />',
+        '<button type="button" data-action="set-qty" data-index="' + index + '">Set qty</button>',
+        '<button type="button" data-action="remove" data-index="' + index + '">Remove</button>',
+        "</div>"
+      ].join("");
+      grid.appendChild(newCard);
+    });
+
+    elements.cardGrid.appendChild(section);
+  });
+
+  bindCardActionButtons();
 }
 
 function displayDeckBuilder() {
