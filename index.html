@@ -110,6 +110,27 @@
           </label>
           <div class="builder-summary" id="builderSummary">Choose a deck to start building.</div>
         </div>
+
+        <div class="builder-chat" id="builderChat">
+          <div class="chat-messages" id="chatMessages">
+            <p class="chat-welcome">Ask me to suggest cards — try "add more ramp" or "find removal for Atraxa".</p>
+          </div>
+          <div class="chat-input-bar">
+            <input type="text" id="chatInput" placeholder="Suggest cards, ask for strategy..." autocomplete="off" />
+            <button type="button" id="chatSendButton">Ask</button>
+          </div>
+          <details class="chat-api-key-details">
+            <summary>⚙ Anthropic API key <span class="chat-api-key-mode" id="chatApiKeyMode">(using Scryfall smart search)</span></summary>
+            <div class="chat-api-key-fields">
+              <p class="chat-api-key-hint">Paste your key to unlock AI-powered suggestions. It's saved only in your browser.</p>
+              <div class="chat-api-key-row">
+                <input type="password" id="chatApiKeyInput" placeholder="sk-ant-..." autocomplete="off" />
+                <button type="button" id="chatApiKeySave">Save</button>
+                <button type="button" id="chatApiKeyClear">Clear</button>
+              </div>
+            </div>
+          </details>
+        </div>
       </section>
 
 

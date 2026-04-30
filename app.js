@@ -1,5 +1,6 @@
 const STORAGE_KEY = "mtgCollection";
 const BUILDER_DECK_KEY = "mtgBuilderDeck";
+const BUILDER_API_KEY_KEY = "mtgBuilderApiKey";
 const COLLECTION_BATCH_SIZE = 1000;
 const COLLECTION_LOAD_TIMEOUT_MS = 8000;
 const SUPABASE_URL = "https://sxilslbrrrxhysqthdre.supabase.co";
@@ -122,6 +123,7 @@ let currentUserId = null;
 let statusMessageTimeout;
 let currentView = "decks";
 let currentDeckDetail = "";
+let pendingChatMessageEl = null;
 let setNameCache = {};
 let realtimeChannel = null;
 let isPasswordRecovery = false;
@@ -282,6 +284,13 @@ function cacheElements() {
   elements.builderTypeFilter = document.getElementById("builderTypeFilter");
   elements.builderLegalOnlyToggle = document.getElementById("builderLegalOnlyToggle");
   elements.builderSummary = document.getElementById("builderSummary");
+  elements.chatMessages = document.getElementById("chatMessages");
+  elements.chatInput = document.getElementById("chatInput");
+  elements.chatSendButton = document.getElementById("chatSendButton");
+  elements.chatApiKeyInput = document.getElementById("chatApiKeyInput");
+  elements.chatApiKeySave = document.getElementById("chatApiKeySave");
+  elements.chatApiKeyClear = document.getElementById("chatApiKeyClear");
+  elements.chatApiKeyMode = document.getElementById("chatApiKeyMode");
   elements.signInButton = document.getElementById("signInButton");
   elements.signUpButton = document.getElementById("signUpButton");
   elements.signOutButton = document.getElementById("signOutButton");
@@ -311,11 +320,19 @@ function bindEvents() {
   elements.sortSelect.addEventListener("change", displayCards);
   elements.builderDeckSelect.addEventListener("change", function() {
     localStorage.setItem(BUILDER_DECK_KEY, elements.builderDeckSelect.value);
+    clearDeckChat();
     displayCards();
   });
   elements.builderSourceFilter.addEventListener("change", displayCards);
   elements.builderTypeFilter.addEventListener("change", displayCards);
   elements.builderLegalOnlyToggle.addEventListener("change", displayCards);
+  elements.chatSendButton.addEventListener("click", handleChatSend);
+  elements.chatInput.addEventListener("keydown", function(e) {
+    if (e.key === "Enter") handleChatSend();
+  });
+  elements.chatApiKeySave.addEventListener("click", saveChatApiKey);
+  elements.chatApiKeyClear.addEventListener("click", clearChatApiKey);
+  initChatApiKey();
   elements.signInButton.addEventListener("click", signIn);
   elements.signUpButton.addEventListener("click", signUp);
   elements.signOutButton.addEventListener("click", signOut);
@@ -1510,6 +1527,363 @@ function bindBuilderActionButtons() {
       moveCardToDeck(Number(button.dataset.index), "unsorted");
     });
   });
+}
+
+// ============================================================
+// DECK BUILDER CHAT
+// ============================================================
+
+function initChatApiKey() {
+  let saved = localStorage.getItem(BUILDER_API_KEY_KEY);
+  if (saved) {
+    elements.chatApiKeyInput.value = saved;
+    elements.chatApiKeyMode.textContent = "(AI-powered)";
+  }
+}
+
+function saveChatApiKey() {
+  let key = elements.chatApiKeyInput.value.trim();
+  if (!key) return;
+  localStorage.setItem(BUILDER_API_KEY_KEY, key);
+  elements.chatApiKeyMode.textContent = "(AI-powered)";
+}
+
+function clearChatApiKey() {
+  localStorage.removeItem(BUILDER_API_KEY_KEY);
+  elements.chatApiKeyInput.value = "";
+  elements.chatApiKeyMode.textContent = "(using Scryfall smart search)";
+}
+
+function clearDeckChat() {
+  pendingChatMessageEl = null;
+  elements.chatMessages.innerHTML = "";
+  let welcome = document.createElement("p");
+  welcome.className = "chat-welcome";
+  welcome.textContent = "Ask me to suggest cards — try \"add more ramp\" or \"find removal for this deck\".";
+  elements.chatMessages.appendChild(welcome);
+}
+
+function appendChatMessage(role, text, cards) {
+  let el = document.createElement("div");
+  el.className = "chat-message chat-message-" + role;
+
+  let textEl = document.createElement("p");
+  textEl.className = "chat-message-text";
+  textEl.textContent = text;
+  el.appendChild(textEl);
+
+  if (cards && cards.length > 0) {
+    let targetDeck = normalizeDeckName(elements.builderDeckSelect.value);
+    el.appendChild(renderChatSuggestions(cards, targetDeck));
+  }
+
+  elements.chatMessages.appendChild(el);
+  elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+  return el;
+}
+
+function showPendingChatMessage() {
+  pendingChatMessageEl = appendChatMessage("assistant", "Thinking…");
+  pendingChatMessageEl.classList.add("chat-message-pending");
+}
+
+function resolvePendingChatMessage(text, cards) {
+  if (!pendingChatMessageEl) return;
+  pendingChatMessageEl.classList.remove("chat-message-pending");
+  pendingChatMessageEl.querySelector(".chat-message-text").textContent = text;
+  if (cards && cards.length > 0) {
+    let targetDeck = normalizeDeckName(elements.builderDeckSelect.value);
+    pendingChatMessageEl.appendChild(renderChatSuggestions(cards, targetDeck));
+  }
+  pendingChatMessageEl = null;
+  elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+}
+
+function renderChatSuggestions(scryfallCards, targetDeck) {
+  let container = document.createElement("div");
+  container.className = "chat-suggestions";
+
+  scryfallCards.forEach(function(card) {
+    let cardEl = document.createElement("div");
+    cardEl.className = "chat-suggestion-card";
+
+    let imageUri = getCardImageUri(card);
+    if (imageUri) {
+      let img = document.createElement("img");
+      img.src = imageUri;
+      img.alt = card.name + " card image";
+      cardEl.appendChild(img);
+    }
+
+    let nameEl = document.createElement("div");
+    nameEl.className = "chat-suggestion-name";
+    nameEl.textContent = card.name;
+    cardEl.appendChild(nameEl);
+
+    let typeEl = document.createElement("div");
+    typeEl.className = "chat-suggestion-type";
+    typeEl.textContent = card.type_line || "";
+    cardEl.appendChild(typeEl);
+
+    let alreadyInDeck = collection.some(function(c) {
+      return c.name.toLowerCase() === card.name.toLowerCase()
+        && normalizeDeckName(c.deck || "unsorted") === targetDeck;
+    });
+    let alreadyOwned = !alreadyInDeck && collection.some(function(c) {
+      return c.name.toLowerCase() === card.name.toLowerCase();
+    });
+
+    let btn = document.createElement("button");
+    btn.type = "button";
+    if (alreadyInDeck) {
+      btn.textContent = "Already in deck";
+      btn.disabled = true;
+    } else if (alreadyOwned) {
+      btn.textContent = "In collection";
+      btn.disabled = true;
+    } else {
+      btn.textContent = targetDeck ? "Add to " + getDeckDisplayLabel(targetDeck) : "Add to collection";
+      btn.addEventListener("click", function() {
+        addSuggestedCard(card, targetDeck || "unsorted");
+        btn.textContent = "Added!";
+        btn.disabled = true;
+      });
+    }
+    cardEl.appendChild(btn);
+
+    container.appendChild(cardEl);
+  });
+
+  return container;
+}
+
+async function addSuggestedCard(scryfallCard, targetDeck) {
+  let newCard = createStoredCard(scryfallCard, { deck: targetDeck, foil: false, quantity: 1 });
+  collection.push(newCard);
+  populateDeckFilter();
+  populateBuilderDeckSelect();
+  displayCards();
+  showStatusMessage(newCard.name + " added to " + getDeckDisplayLabel(targetDeck) + ".");
+  try {
+    await dbUpsertCards([newCard]);
+  } catch (error) {
+    console.error("Could not save suggested card.", error);
+    collection.splice(collection.indexOf(newCard), 1);
+    populateDeckFilter();
+    populateBuilderDeckSelect();
+    displayCards();
+    showStatusMessage("Could not add " + newCard.name + ". Please try again.");
+  }
+}
+
+async function handleChatSend() {
+  let prompt = elements.chatInput.value.trim();
+  if (!prompt) return;
+  elements.chatInput.value = "";
+  elements.chatSendButton.disabled = true;
+
+  appendChatMessage("user", prompt);
+  showPendingChatMessage();
+
+  let apiKey = localStorage.getItem(BUILDER_API_KEY_KEY);
+  let targetDeck = normalizeDeckName(elements.builderDeckSelect.value);
+
+  try {
+    if (apiKey) {
+      await handleClaudeChat(prompt, targetDeck, apiKey);
+    } else {
+      await handleScryfallChat(prompt, targetDeck);
+    }
+  } catch (error) {
+    resolvePendingChatMessage("Something went wrong: " + error.message);
+  } finally {
+    elements.chatSendButton.disabled = false;
+    elements.chatInput.focus();
+  }
+}
+
+async function handleScryfallChat(prompt, targetDeck) {
+  let commanderDeck = COMMANDER_DECKS[targetDeck];
+  let colors = commanderDeck ? commanderDeck.colors : [];
+  let query = buildScryfallQueryFromPrompt(prompt, colors);
+
+  let cards = await fetchScryfallSearch(query);
+  if (cards.length === 0) {
+    resolvePendingChatMessage("No Scryfall results for that search. Try rephrasing, or add an Anthropic API key for AI suggestions.");
+    return;
+  }
+
+  let label = getDeckDisplayLabel(targetDeck) || "your deck";
+  resolvePendingChatMessage(
+    "Here are Scryfall results for " + label + " (sorted by EDHREC popularity). Add an Anthropic API key below for AI-powered suggestions.",
+    cards.slice(0, 12)
+  );
+}
+
+async function handleClaudeChat(prompt, targetDeck, apiKey) {
+  let commanderDeck = COMMANDER_DECKS[targetDeck];
+  let colors = commanderDeck ? commanderDeck.colors : [];
+  let deckCards = collection.filter(function(c) {
+    return normalizeDeckName(c.deck || "unsorted") === targetDeck;
+  });
+  let cardListText = deckCards.map(function(c) {
+    return c.name + " (" + (c.type || "?") + ")";
+  }).join(", ") || "none yet";
+
+  let systemPrompt = "You are an expert Magic: The Gathering Commander deckbuilding assistant.\n"
+    + "Deck: " + getDeckDisplayLabel(targetDeck) + "\n"
+    + (commanderDeck ? "Commander(s): " + commanderDeck.commander.join(", ") + "\n" : "")
+    + "Color identity: " + (colors.length > 0 ? colors.join("") : "Colorless") + "\n"
+    + "Cards in deck (" + deckCards.length + "): " + cardListText + "\n\n"
+    + "Suggest 6-10 specific, real Magic card names that fit the color identity.\n"
+    + "Keep your response to 2-3 sentences of strategy, then end with exactly:\n"
+    + "CARDS: CardName1 | CardName2 | CardName3";
+
+  let response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 512,
+      system: systemPrompt,
+      messages: [{ role: "user", content: prompt }]
+    })
+  });
+
+  if (!response.ok) {
+    let errData = await response.json().catch(function() { return {}; });
+    let errMsg = (errData.error && errData.error.message) || ("API error " + response.status);
+    if (response.status === 401) {
+      resolvePendingChatMessage("Invalid API key — check your key below. Falling back to Scryfall search.");
+    } else {
+      resolvePendingChatMessage(errMsg + " — falling back to Scryfall search.");
+    }
+    await handleScryfallChat(prompt, targetDeck);
+    return;
+  }
+
+  let data = await response.json();
+  let fullText = data.content[0].text;
+  let cardNames = extractCardNamesFromClaudeResponse(fullText);
+  let explanation = fullText.replace(/CARDS:.*$/m, "").trim();
+
+  if (cardNames.length === 0) {
+    resolvePendingChatMessage(explanation || fullText);
+    return;
+  }
+
+  let scryfallCards = await fetchCardsByNames(cardNames);
+  resolvePendingChatMessage(explanation, scryfallCards);
+}
+
+function extractCardNamesFromClaudeResponse(text) {
+  let match = text.match(/CARDS:\s*(.+)$/m);
+  if (!match) return [];
+  return match[1].split("|").map(function(s) { return s.trim(); }).filter(Boolean);
+}
+
+async function fetchScryfallSearch(query) {
+  let url = "https://api.scryfall.com/cards/search?q=" + encodeURIComponent(query);
+  let response = await fetch(url);
+  if (response.status === 404) return [];
+  if (!response.ok) throw new Error("Scryfall search failed (" + response.status + ")");
+  let data = await response.json();
+  return data.data || [];
+}
+
+async function fetchCardsByNames(names) {
+  if (names.length === 0) return [];
+  let identifiers = names.slice(0, 75).map(function(name) { return { name: name }; });
+  let response = await fetch("https://api.scryfall.com/cards/collection", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ identifiers: identifiers })
+  });
+  if (!response.ok) return [];
+  let data = await response.json();
+  return data.data || [];
+}
+
+function buildScryfallQueryFromPrompt(prompt, colors) {
+  let p = prompt.toLowerCase();
+  let parts = [];
+
+  if (colors && colors.length > 0) {
+    parts.push("id<=" + colors.join("").toLowerCase());
+  }
+  parts.push("format:commander");
+
+  let wantsLands = /\bland(s|fix|base|ramp)?\b/.test(p);
+
+  if (/\b(ramp|mana rock|mana dork|accelerat|mana fix)\b/.test(p)) {
+    if (wantsLands && /\bland/.test(p)) {
+      parts.push("(type:land or (oracle:\"add {\" -type:land) or oracle:\"search your library for a basic land\")");
+    } else {
+      parts.push("(oracle:\"add {\" or oracle:\"search your library for a basic land\" or (type:artifact oracle:\"add\"))");
+      parts.push("-type:land");
+    }
+  } else if (/\b(board.?wipe|wrath|mass removal|all creatures|destroy all)\b/.test(p)) {
+    parts.push("(oracle:\"destroy all\" or oracle:\"exile all creatures\" or oracle:\"each creature gets\" or oracle:\"all creatures get\")");
+  } else if (/\b(removal|destroy|kill target|exile target|remove|spot removal)\b/.test(p)) {
+    parts.push("(oracle:\"destroy target\" or oracle:\"exile target creature\" or oracle:\"exile target permanent\" or oracle:\"deals damage to target creature\")");
+  } else if (/\b(counter(spell)?|counter target|counterspell)\b/.test(p)) {
+    parts.push("type:instant oracle:\"counter target\"");
+  } else if (/\b(draw|card draw|card advantage|cantrip)\b/.test(p)) {
+    parts.push("(oracle:\"draw a card\" or oracle:\"draw two cards\" or oracle:\"draw three cards\" or oracle:\"draw cards\")");
+    parts.push("-type:land");
+  } else if (/\b(tutor|search your library)\b/.test(p)) {
+    parts.push("oracle:\"search your library\"");
+    parts.push("-type:land");
+  } else if (/\bproliferat/.test(p)) {
+    parts.push("oracle:proliferate");
+  } else if (/\b(protection|hexproof|shroud|indestructible)\b/.test(p)) {
+    parts.push("(keyword:hexproof or keyword:shroud or keyword:indestructible or oracle:\"protection from\")");
+  } else if (/\b(flier|flyer|flying)\b/.test(p)) {
+    parts.push("type:creature keyword:flying");
+  } else if (/\b(token)\b/.test(p)) {
+    parts.push("oracle:\"creature token\"");
+  } else if (/\b(\+1\/\+1|plus one|counter(s)?)\b/.test(p) && !/counter target/.test(p)) {
+    parts.push("oracle:\"+1/+1 counter\"");
+  } else if (/\b(extra turn)\b/.test(p)) {
+    parts.push("oracle:\"extra turn\"");
+  } else if (/\b(life(gain)?|gain life)\b/.test(p)) {
+    parts.push("oracle:\"gain life\"");
+  } else if (/\b(haste)\b/.test(p)) {
+    parts.push("keyword:haste type:creature");
+  } else if (/\b(trample)\b/.test(p)) {
+    parts.push("keyword:trample type:creature");
+  } else if (/\b(reanimat|graveyard recursion|from (the|your) graveyard)\b/.test(p)) {
+    parts.push("(oracle:\"return target\" oracle:\"graveyard\" or oracle:\"from your graveyard\")");
+  } else if (wantsLands) {
+    parts.push("type:land");
+  } else if (/\b(artifact)\b/.test(p)) {
+    parts.push("type:artifact");
+  } else if (/\b(enchantment)\b/.test(p)) {
+    parts.push("type:enchantment");
+  } else if (/\b(creature)\b/.test(p)) {
+    parts.push("type:creature");
+  } else if (/\b(instant)\b/.test(p)) {
+    parts.push("type:instant");
+  } else if (/\b(sorcery)\b/.test(p)) {
+    parts.push("type:sorcery");
+  } else if (/\b(planeswalker)\b/.test(p)) {
+    parts.push("type:planeswalker");
+  } else {
+    let words = prompt.trim().split(/\s+/).filter(function(w) { return w.length > 3; });
+    if (words.length > 0) {
+      parts.push("oracle:\"" + words[0].toLowerCase() + "\"");
+    }
+  }
+
+  if (/\b(cheap|low.?cost|1 mana|2 mana|cmc[<= ]+2)\b/.test(p)) parts.push("cmc<=2");
+  else if (/\b(3 mana|cmc[<= ]+3)\b/.test(p)) parts.push("cmc<=3");
+
+  return parts.join(" ") + " order:edhrec";
 }
 
 function bindCardActionButtons() {

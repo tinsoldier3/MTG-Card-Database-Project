@@ -188,6 +188,197 @@ html, body {
   font-size: 1.6rem;
 }
 
+/* ========================= */
+/* DECK BUILDER CHAT         */
+/* ========================= */
+
+.builder-chat {
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.chat-messages {
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0 12px;
+}
+
+.chat-welcome {
+  font-size: 13px;
+  opacity: 0.6;
+  font-style: italic;
+  margin: 0;
+}
+
+.chat-message {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 90%;
+}
+
+.chat-message-user {
+  align-self: flex-end;
+}
+
+.chat-message-assistant {
+  align-self: flex-start;
+}
+
+.chat-message-text {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.chat-message-user .chat-message-text {
+  background: var(--accent, #6366f1);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.chat-message-assistant .chat-message-text {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+
+.chat-message-pending .chat-message-text {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.chat-suggestions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.chat-suggestion-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.chat-suggestion-card img {
+  width: 100%;
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+
+.chat-suggestion-card img.chat-suggestion-no-image {
+  display: none;
+}
+
+.chat-suggestion-name {
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.chat-suggestion-type {
+  font-size: 12px;
+  opacity: 0.7;
+  flex: 1;
+}
+
+.chat-suggestion-card button {
+  margin-top: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  width: 100%;
+}
+
+.chat-suggestion-card button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.chat-input-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.chat-input-bar input {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--input-bg, var(--bg));
+  color: var(--text);
+  font-size: 14px;
+}
+
+.chat-input-bar button {
+  padding: 10px 18px;
+  flex-shrink: 0;
+}
+
+.chat-api-key-details {
+  font-size: 13px;
+}
+
+.chat-api-key-details summary {
+  cursor: pointer;
+  opacity: 0.65;
+  user-select: none;
+  padding: 4px 0;
+}
+
+.chat-api-key-details summary:hover {
+  opacity: 1;
+}
+
+.chat-api-key-mode {
+  font-weight: normal;
+  font-style: italic;
+}
+
+.chat-api-key-hint {
+  margin: 8px 0 6px;
+  opacity: 0.7;
+  font-size: 12px;
+}
+
+.chat-api-key-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.chat-api-key-row input {
+  flex: 1;
+  min-width: 180px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--input-bg, var(--bg));
+  color: var(--text);
+  font-size: 13px;
+}
+
+.chat-api-key-row button {
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+/* ========================= */
+/* DECK HEADINGS             */
+/* ========================= */
+
 .deck-meta {
   margin: 0 0 16px;
   opacity: 0.75;
