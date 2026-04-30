@@ -835,6 +835,14 @@ button:hover {
   color: var(--illegal);
 }
 
+.auth-message-error {
+  color: var(--illegal);
+}
+
+.auth-message-success {
+  color: var(--legal, #16a34a);
+}
+
 .forgot-password-btn {
   background: none;
   border: none;

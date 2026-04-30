@@ -2193,6 +2193,21 @@ function parseDeckFileText(text) {
   return identifiers;
 }
 
+function consolidateImportIdentifiers(identifiers) {
+  let seen = {};
+  let result = [];
+  identifiers.forEach(function(id) {
+    let key = id.name.toLowerCase() + "|" + (id.foil ? "foil" : "nonfoil");
+    if (key in seen) {
+      result[seen[key]].quantity = (result[seen[key]].quantity || 1) + (id.quantity || 1);
+    } else {
+      seen[key] = result.length;
+      result.push(Object.assign({}, id));
+    }
+  });
+  return result;
+}
+
 function findMatchingIdentifier(card, identifiers) {
   let exactIndex = identifiers.findIndex(function(identifier) {
     return !identifier.matched
@@ -2370,7 +2385,7 @@ async function importDeck(mode) {
   }
 
   let text = await file.text();
-  let identifiers = parseDeckFileText(text);
+  let identifiers = consolidateImportIdentifiers(parseDeckFileText(text));
 
   if (identifiers.length === 0) {
     alert("No card lines were found in that deck file.");
@@ -2391,6 +2406,8 @@ async function importDeck(mode) {
     }
 
     let toUpsert = [];
+    let addedCount = 0;
+    let updatedCount = 0;
     allCards.forEach(function(entry) {
       let newCard = createStoredCard(entry.card, {
         deck: deckName,
@@ -2401,30 +2418,37 @@ async function importDeck(mode) {
       });
 
       if (mode === "merge") {
-        let existingIndex = collection.findIndex(c =>
-          normalizeDeckName(c.deck || "unsorted") === deckName &&
-          c.name === newCard.name &&
-          c.foil === newCard.foil
-        );
+        let existingIndex = collection.findIndex(function(c) {
+          return normalizeDeckName(c.deck || "unsorted") === deckName
+            && c.name === newCard.name
+            && c.foil === newCard.foil;
+        });
         if (existingIndex !== -1) {
-          let updatedCard = { ...newCard, id: collection[existingIndex].id };
+          let existing = collection[existingIndex];
+          let mergedQty = Math.max(existing.quantity || 1, newCard.quantity || 1);
+          let updatedCard = { ...newCard, id: existing.id, quantity: mergedQty };
           collection[existingIndex] = updatedCard;
           toUpsert.push(updatedCard);
+          updatedCount++;
         } else {
           collection.push(newCard);
           toUpsert.push(newCard);
+          addedCount++;
         }
       } else {
         collection.push(newCard);
         toUpsert.push(newCard);
+        addedCount++;
       }
     });
 
     await dbUpsertCards(toUpsert);
 
-    elements.progressText.textContent = notFound.length > 0
-      ? "Import complete! " + allCards.length + " cards added. " + notFound.length + " not found."
-      : "Import complete! All " + allCards.length + " cards added to " + deckName + ".";
+    let summaryParts = [];
+    if (addedCount > 0) summaryParts.push(addedCount + " new card" + (addedCount === 1 ? "" : "s") + " added");
+    if (updatedCount > 0) summaryParts.push(updatedCount + " existing card" + (updatedCount === 1 ? "" : "s") + " updated");
+    if (notFound.length > 0) summaryParts.push(notFound.length + " not found on Scryfall");
+    elements.progressText.textContent = "Import complete — " + (summaryParts.join(", ") || "nothing changed") + ".";
     elements.progressBar.style.width = "100%";
 
     if (notFound.length > 0) {
@@ -2770,6 +2794,38 @@ async function initApp(email) {
   loadSetNames();
 }
 
+function friendlyAuthError(error) {
+  let msg = (error && error.message) ? error.message.toLowerCase() : "";
+  if (msg.includes("invalid login") || msg.includes("invalid credentials") || msg.includes("wrong password") || msg.includes("email not confirmed")) {
+    return "Incorrect email or password. Double-check your credentials and try again.";
+  }
+  if (msg.includes("already registered") || msg.includes("user already exists")) {
+    return "That email is already registered. Try signing in instead.";
+  }
+  if (msg.includes("weak password") || msg.includes("at least 6") || msg.includes("password should")) {
+    return "Password must be at least 6 characters.";
+  }
+  if (msg.includes("rate limit") || msg.includes("too many")) {
+    return "Too many attempts — wait a minute then try again.";
+  }
+  if (msg.includes("network") || msg.includes("fetch")) {
+    return "Network error — check your connection and try again.";
+  }
+  return error.message || "Something went wrong. Please try again.";
+}
+
+function showAuthError(el, message) {
+  el.textContent = message;
+  el.classList.remove("hidden", "auth-message-success");
+  el.classList.add("auth-message-error");
+}
+
+function showAuthSuccess(el, message) {
+  el.textContent = message;
+  el.classList.remove("hidden", "auth-message-error");
+  el.classList.add("auth-message-success");
+}
+
 async function signIn() {
   let email = elements.authEmail.value.trim();
   let password = elements.authPassword.value;
@@ -2783,9 +2839,7 @@ async function signIn() {
   elements.signUpButton.disabled = false;
   elements.signInButton.textContent = "Sign in";
   if (error) {
-    elements.authMessage.textContent = error.message;
-    elements.authMessage.classList.remove("hidden");
-    elements.authMessage.style.color = "";
+    showAuthError(elements.authMessage, friendlyAuthError(error));
     return;
   }
   currentUserId = data.user.id;
@@ -2796,6 +2850,12 @@ async function signUp() {
   let email = elements.authEmail.value.trim();
   let password = elements.authPassword.value;
   elements.authMessage.classList.add("hidden");
+
+  if (password.length < 6) {
+    showAuthError(elements.authMessage, "Password must be at least 6 characters.");
+    return;
+  }
+
   elements.signInButton.disabled = true;
   elements.signUpButton.disabled = true;
   elements.signUpButton.textContent = "Creating account...";
@@ -2805,15 +2865,11 @@ async function signUp() {
   elements.signUpButton.disabled = false;
   elements.signUpButton.textContent = "Create account";
   if (error) {
-    elements.authMessage.textContent = error.message;
-    elements.authMessage.classList.remove("hidden");
-    elements.authMessage.style.color = "";
+    showAuthError(elements.authMessage, friendlyAuthError(error));
     return;
   }
   if (data.user && !data.session) {
-    elements.authMessage.textContent = "Check your email to confirm your account.";
-    elements.authMessage.style.color = "green";
-    elements.authMessage.classList.remove("hidden");
+    showAuthSuccess(elements.authMessage, "Account created! Check your email to confirm before signing in.");
     return;
   }
   currentUserId = data.user.id;
@@ -2827,38 +2883,32 @@ async function signOut() {
 async function forgotPassword() {
   let email = elements.authEmail.value.trim();
   if (!email) {
-    elements.authMessage.textContent = "Enter your email address above first.";
-    elements.authMessage.style.color = "";
-    elements.authMessage.classList.remove("hidden");
+    showAuthError(elements.authMessage, "Enter your email address above first.");
     return;
   }
   let { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
     redirectTo: "https://tinsoldier3.github.io/MTG-Card-Database-Project/"
   });
   if (error) {
-    elements.authMessage.textContent = error.message;
-    elements.authMessage.style.color = "";
-    elements.authMessage.classList.remove("hidden");
+    showAuthError(elements.authMessage, friendlyAuthError(error));
     return;
   }
-  elements.authMessage.textContent = "Password reset email sent — check your inbox.";
-  elements.authMessage.style.color = "green";
-  elements.authMessage.classList.remove("hidden");
+  showAuthSuccess(elements.authMessage, "Password reset email sent — check your inbox.");
 }
 
 async function updatePassword() {
   let newPassword = elements.newPasswordInput.value;
   if (!newPassword) {
-    elements.resetMessage.textContent = "Please enter a new password.";
-    elements.resetMessage.style.color = "";
-    elements.resetMessage.classList.remove("hidden");
+    showAuthError(elements.resetMessage, "Please enter a new password.");
+    return;
+  }
+  if (newPassword.length < 6) {
+    showAuthError(elements.resetMessage, "Password must be at least 6 characters.");
     return;
   }
   let { error } = await supabaseClient.auth.updateUser({ password: newPassword });
   if (error) {
-    elements.resetMessage.textContent = error.message;
-    elements.resetMessage.style.color = "";
-    elements.resetMessage.classList.remove("hidden");
+    showAuthError(elements.resetMessage, friendlyAuthError(error));
     return;
   }
   isPasswordRecovery = false;
