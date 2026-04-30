@@ -407,14 +407,15 @@ async function loadCollectionWithSimpleQuery(originalError) {
 }
 
 function withTimeout(promise, timeoutMs, message) {
-  return Promise.race([
-    promise,
-    new Promise(function(_, reject) {
-      setTimeout(function() {
-        reject(new Error(message));
-      }, timeoutMs);
-    })
-  ]);
+  let timerId;
+  let timeout = new Promise(function(_, reject) {
+    timerId = setTimeout(function() {
+      reject(new Error(message));
+    }, timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(function() {
+    clearTimeout(timerId);
+  });
 }
 
 function getCollectionLoadErrorMessage(error) {
@@ -727,7 +728,6 @@ function displayCards() {
   updateViewVisibility();
 
   if (currentView === "builder") {
-    populateBuilderDeckSelect();
     displayDeckBuilder();
     return;
   }
@@ -1246,7 +1246,7 @@ function sortEntriesForView(entries) {
       case "type":
         return (cardA.type || "").localeCompare(cardB.type || "");
       case "color":
-        return (cardA.colorIdentity.join("") || "").localeCompare(cardB.colorIdentity.join("") || "");
+        return ((cardA.colorIdentity || []).join("") || "").localeCompare((cardB.colorIdentity || []).join("") || "");
       case "set":
         return (cardA.set || "").localeCompare(cardB.set || "");
       case "collector":
@@ -1537,7 +1537,7 @@ async function updateCardDeck(index) {
 
 async function moveCardToDeck(index, nextDeckName) {
   let previousCard = collection[index];
-  let normalizedDeckName = normalizeDeckName(nextDeckName);
+  let normalizedDeckName = nextDeckName;
   let updatedCard = { ...previousCard, deck: normalizedDeckName };
   collection[index] = updatedCard;
   populateDeckFilter();

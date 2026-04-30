@@ -21,6 +21,8 @@ Build a small but reliable collection app that is easy to maintain, easy to exte
 - Loading states — auth buttons, collection grid, and card add button show progress during async operations
 - Password reset via email (forgot password link on sign-in screen)
 - In-place quantity editing — each card has a number input and "Set qty" button directly in the card grid
+- **Deck Builder view** — browse your collection alongside a target deck; filter available cards by source (unsorted, other decks, or full collection), card type, and commander legality; move cards in or out with one click
+- Collection load fallback — if the paginated Supabase query fails, the app retries with a simple query and notifies you
 
 ## Project Structure
 
@@ -53,10 +55,10 @@ Supabase (hosted Postgres) replaces localStorage as the source of truth.
 
 ## What's Next
 
-1. **Deck detail pages** — Archidekt-style per-deck overview using hash routing (planned, not started).
-3. **Duplicate detection on import** — cards are matched by name+foil during merge, but quantity stacking across repeated imports could be smarter.
-4. **Better auth error messaging** — surface Supabase validation errors (e.g. weak password) more clearly in the sign-up form.
-5. **Framework migration (optional)** — move to Vite + Vue once the data layer is stable.
+1. **Deck detail pages** — Archidekt-style per-deck overview using hash routing (partially addressed by Deck Builder; full detail view not started).
+2. **Duplicate detection on import** — cards are matched by name+foil during merge, but quantity stacking across repeated imports could be smarter.
+3. **Better auth error messaging** — surface Supabase validation errors (e.g. weak password) more clearly in the sign-up form.
+4. **Framework migration (optional)** — move to Vite + Vue once the data layer is stable.
 
 ## Supabase Schema
 
