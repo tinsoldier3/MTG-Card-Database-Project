@@ -2,7 +2,7 @@ const STORAGE_KEY = "mtgCollection";
 const BUILDER_DECK_KEY = "mtgBuilderDeck";
 const BUILDER_API_KEY_KEY = "mtgBuilderApiKey";
 const COLLECTION_BATCH_SIZE = 1000;
-const COLLECTION_LOAD_TIMEOUT_MS = 8000;
+const COLLECTION_LOAD_TIMEOUT_MS = 20000;
 const SUPABASE_URL = "https://sxilslbrrrxhysqthdre.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4aWxzbGJycnJ4aHlzcXRoZHJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1NTc3NzQsImV4cCI6MjA5MjEzMzc3NH0.vRPVR1H0TxBhnu9YRikxQ9nd48mxK8v0Z-bY-LBl5wU";
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -86,6 +86,7 @@ const DECK_NAME_ALIASES = {
   "timey wimey (tenth doctor & rose)": "Timey Wimey",
   "tenth doctor & rose": "Timey Wimey",
   "bumi unleashed": "Bumi Unleashed",
+  "bumi unleased": "Bumi Unleashed",
   "counter intelligence": "Counter Intelligence",
   "counter intelligence (inspirit)": "Counter Intelligence",
   inspirit: "Counter Intelligence",
@@ -209,7 +210,7 @@ function setCurrentViewFromHash() {
     currentView = "sets";
   } else if (hash.startsWith("deck/")) {
     currentView = "deck-detail";
-    currentDeckDetail = normalizeDeckName(hash.substring(5));
+    currentDeckDetail = normalizeDeckName(decodeURIComponent(hash.substring(5)));
   } else {
     currentView = "decks";
   }
@@ -759,6 +760,11 @@ function displayCards() {
     return;
   }
 
+  if (currentView === "decks") {
+    displayDecksOverview();
+    return;
+  }
+
   let selectedCommander = elements.commanderFilter.value;
   let selectedDeck = elements.deckFilter.value;
   let searchQuery = elements.searchInput.value.toLowerCase().trim();
@@ -1089,6 +1095,10 @@ decks[deckName].sort(function(a, b) {
 
 function updateViewVisibility() {
   elements.builderPanel.classList.toggle("hidden", currentView !== "builder");
+  let hideControls = currentView === "decks" || currentView === "deck-detail";
+  elements.sortSelect.classList.toggle("hidden", hideControls);
+  elements.commanderFilter.closest(".field-group") && elements.commanderFilter.closest(".field-group").classList.toggle("hidden", hideControls);
+  elements.deckFilter.closest(".field-group") && elements.deckFilter.closest(".field-group").classList.toggle("hidden", hideControls);
 }
 
 const DECK_TYPE_CATEGORIES = ["Commander", "Creatures", "Planeswalkers", "Instants", "Sorceries", "Artifacts", "Enchantments", "Lands", "Other"];
@@ -1107,6 +1117,102 @@ function getDeckTypeCategory(card, deckName) {
   return "Other";
 }
 
+function displayDecksOverview() {
+  elements.cardGrid.innerHTML = "";
+
+  let searchQuery = elements.searchInput.value.toLowerCase().trim();
+
+  let deckNames = Array.from(new Set(
+    collection
+      .filter(function(card) { return !isBoxOrBinder(normalizeDeckName(card.deck || "unsorted")); })
+      .map(function(card) { return normalizeDeckName(card.deck || "unsorted"); })
+  ));
+
+  Object.keys(COMMANDER_DECKS).forEach(function(deckName) {
+    if (!deckNames.includes(deckName)) deckNames.push(deckName);
+  });
+
+  deckNames.sort(function(a, b) {
+    return getDeckDisplayLabel(a).localeCompare(getDeckDisplayLabel(b));
+  });
+
+  if (searchQuery) {
+    deckNames = deckNames.filter(function(deckName) {
+      return getDeckDisplayLabel(deckName).toLowerCase().includes(searchQuery) || deckName.includes(searchQuery);
+    });
+  }
+
+  let totalInDecks = collection.filter(function(card) {
+    return !isBoxOrBinder(normalizeDeckName(card.deck || "unsorted"));
+  }).reduce(function(sum, card) { return sum + (card.quantity || 1); }, 0);
+
+  elements.headerText.innerHTML = '<span id="cardCount">' + totalInDecks + '</span> cards in your decks';
+  elements.filterNote.textContent = searchQuery
+    ? 'Showing decks matching "' + searchQuery + '".'
+    : "Showing all decks.";
+
+  if (deckNames.length === 0) {
+    let empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = searchQuery ? "No decks match your search." : "No decks in your collection yet.";
+    elements.cardGrid.appendChild(empty);
+    return;
+  }
+
+  let grid = document.createElement("div");
+  grid.className = "decks-overview-grid";
+
+  deckNames.forEach(function(deckName) {
+    let commanderDeck = COMMANDER_DECKS[deckName];
+    let deckCards = collection.filter(function(card) {
+      return normalizeDeckName(card.deck || "unsorted") === deckName;
+    });
+    let cardCount = deckCards.reduce(function(sum, card) { return sum + (card.quantity || 1); }, 0);
+    let illegalCount = deckCards.filter(function(card) {
+      let legality = getDeckLegality(card);
+      return legality.checked && !legality.legal;
+    }).length;
+
+    let tile = document.createElement("a");
+    tile.href = "#deck/" + encodeURIComponent(deckName);
+    tile.className = "deck-tile";
+
+    let tileName = document.createElement("div");
+    tileName.className = "deck-tile-name";
+    tileName.textContent = getDeckDisplayLabel(deckName);
+    tile.appendChild(tileName);
+
+    if (commanderDeck) {
+      let tileCommander = document.createElement("div");
+      tileCommander.className = "deck-tile-commander";
+      tileCommander.textContent = commanderDeck.commander.join(" & ");
+      tile.appendChild(tileCommander);
+
+      let tileColors = document.createElement("div");
+      tileColors.className = "deck-tile-colors";
+      commanderDeck.colors.forEach(function(c) {
+        let pip = document.createElement("span");
+        pip.className = "color-pip color-pip-" + c.toLowerCase();
+        pip.title = c;
+        tileColors.appendChild(pip);
+      });
+      tile.appendChild(tileColors);
+    }
+
+    let tileStats = document.createElement("div");
+    tileStats.className = "deck-tile-stats";
+    tileStats.textContent = cardCount > 0 ? cardCount + " cards" : "No cards yet";
+    if (illegalCount > 0) {
+      tileStats.textContent += " • " + illegalCount + " illegal";
+    }
+    tile.appendChild(tileStats);
+
+    grid.appendChild(tile);
+  });
+
+  elements.cardGrid.appendChild(grid);
+}
+
 function displayDeckDetail() {
   elements.cardGrid.innerHTML = "";
 
@@ -1120,6 +1226,13 @@ function displayDeckDetail() {
   let displayLabel = getDeckDisplayLabel(currentDeckDetail);
   let commanderDeck = COMMANDER_DECKS[currentDeckDetail];
   let totalCards = deckEntries.reduce(function(sum, e) { return sum + (e.card.quantity || 1); }, 0);
+  let illegalCount = deckEntries.filter(function(e) {
+    let legality = getDeckLegality(e.card);
+    return legality.checked && !legality.legal;
+  }).length;
+
+  elements.headerText.innerHTML = '<span id="cardCount">' + totalCards + '</span> cards in ' + escapeHtml(displayLabel);
+  elements.filterNote.textContent = "Viewing " + displayLabel + ".";
 
   let backLink = document.createElement("a");
   backLink.href = "#decks";
@@ -1127,49 +1240,55 @@ function displayDeckDetail() {
   backLink.textContent = "← All Decks";
   elements.cardGrid.appendChild(backLink);
 
-  let header = document.createElement("div");
-  header.className = "deck-detail-header";
+  let layout = document.createElement("div");
+  layout.className = "deck-detail-layout";
+
+  // --- SIDEBAR ---
+  let sidebar = document.createElement("aside");
+  sidebar.className = "deck-detail-sidebar";
+
+  if (commanderDeck) {
+    let commanderEntry = deckEntries.find(function(e) {
+      return commanderDeck.commander.some(function(name) { return name === e.card.name; });
+    });
+    if (commanderEntry && commanderEntry.card.image) {
+      let artWrap = document.createElement("div");
+      artWrap.className = "deck-detail-commander-art";
+      let img = document.createElement("img");
+      img.src = commanderEntry.card.image;
+      img.alt = commanderEntry.card.name;
+      artWrap.appendChild(img);
+      sidebar.appendChild(artWrap);
+    }
+  }
+
+  let sidebarInfo = document.createElement("div");
+  sidebarInfo.className = "deck-detail-sidebar-info";
 
   let titleEl = document.createElement("h2");
   titleEl.className = "deck-detail-title";
   titleEl.textContent = displayLabel;
-  header.appendChild(titleEl);
-
-  let meta = document.createElement("div");
-  meta.className = "deck-detail-meta";
+  sidebarInfo.appendChild(titleEl);
 
   if (commanderDeck) {
-    let commanderNames = commanderDeck.commander.join(" & ");
+    let metaEl = document.createElement("div");
+    metaEl.className = "deck-detail-meta";
     let colorPips = commanderDeck.colors.map(function(c) {
       return '<span class="color-pip color-pip-' + c.toLowerCase() + '" title="' + c + '"></span>';
     }).join("");
-    meta.innerHTML = '<span class="deck-detail-commander">Commander: ' + escapeHtml(commanderNames) + '</span>'
+    metaEl.innerHTML = '<span class="deck-detail-commander">' + escapeHtml(commanderDeck.commander.join(" & ")) + '</span>'
       + '<span class="deck-detail-colors">' + colorPips + '</span>';
+    sidebarInfo.appendChild(metaEl);
   }
-
-  let illegalCount = deckEntries.filter(function(e) {
-    let legality = getDeckLegality(e.card);
-    return legality.checked && !legality.legal;
-  }).length;
 
   let statsEl = document.createElement("div");
   statsEl.className = "deck-detail-stats";
   statsEl.textContent = totalCards + " cards";
-  if (illegalCount > 0) {
-    statsEl.textContent += " • " + illegalCount + " outside color identity";
-  }
-  header.appendChild(meta);
-  header.appendChild(statsEl);
-  elements.cardGrid.appendChild(header);
+  if (illegalCount > 0) statsEl.textContent += " • " + illegalCount + " outside color identity";
+  sidebarInfo.appendChild(statsEl);
+  sidebar.appendChild(sidebarInfo);
 
-  if (deckEntries.length === 0) {
-    let empty = document.createElement("p");
-    empty.className = "empty-state";
-    empty.textContent = "No cards in this deck yet.";
-    elements.cardGrid.appendChild(empty);
-    return;
-  }
-
+  // Breakdown bars
   let groups = {};
   DECK_TYPE_CATEGORIES.forEach(function(cat) { groups[cat] = []; });
   deckEntries.forEach(function(entry) {
@@ -1177,65 +1296,196 @@ function displayDeckDetail() {
     groups[cat].push(entry);
   });
 
-  DECK_TYPE_CATEGORIES.forEach(function(cat) {
-    let entries = groups[cat];
-    if (entries.length === 0) return;
+  let nonEmpty = DECK_TYPE_CATEGORIES.filter(function(cat) { return groups[cat].length > 0; });
+  if (nonEmpty.length > 0) {
+    let breakdownEl = document.createElement("div");
+    breakdownEl.className = "deck-detail-breakdown";
+    let breakdownHeading = document.createElement("h4");
+    breakdownHeading.className = "deck-detail-breakdown-heading";
+    breakdownHeading.textContent = "Breakdown";
+    breakdownEl.appendChild(breakdownHeading);
 
-    entries.sort(function(a, b) { return a.card.name.localeCompare(b.card.name); });
+    let barsEl = document.createElement("div");
+    barsEl.className = "breakdown-bars";
+    nonEmpty.forEach(function(cat) {
+      let catCount = groups[cat].reduce(function(sum, e) { return sum + (e.card.quantity || 1); }, 0);
+      let pct = totalCards > 0 ? Math.max(2, Math.round((catCount / totalCards) * 100)) : 0;
 
-    let catCount = entries.reduce(function(sum, e) { return sum + (e.card.quantity || 1); }, 0);
-    let section = document.createElement("section");
-    section.className = "deck-detail-section";
+      let barRow = document.createElement("a");
+      barRow.href = "#detail-section-" + cat.toLowerCase();
+      barRow.className = "breakdown-bar-row";
 
-    let heading = document.createElement("h3");
-    heading.className = "deck-detail-section-heading";
-    heading.textContent = cat + " (" + catCount + ")";
-    section.appendChild(heading);
+      let barLabel = document.createElement("div");
+      barLabel.className = "breakdown-bar-label";
+      barLabel.innerHTML = '<span class="breakdown-cat-name">' + escapeHtml(cat) + '</span>'
+        + '<span class="breakdown-cat-count">' + catCount + '</span>';
+      barRow.appendChild(barLabel);
 
-    let grid = document.createElement("div");
-    grid.className = "card-grid";
-    section.appendChild(grid);
-
-    entries.forEach(function(entry) {
-      let card = entry.card;
-      let index = entry.index;
-      let legality = getDeckLegality(card);
-      let deckInputId = getDeckInputId(index);
-      let safeCardName = escapeHtml(card.name);
-      let safeTypeLine = escapeHtml(card.type || "");
-      let safeDeckName = escapeHtml(card.deck || "unsorted");
-      let safeImage = escapeHtml(card.image || "");
-
-      let newCard = document.createElement("div");
-      newCard.className = legality.checked && !legality.legal ? "card card-illegal" : "card";
-      newCard.innerHTML = [
-        '<img src="' + safeImage + '" alt="' + safeCardName + ' card image" />',
-        '<div class="card-name">' + safeCardName + ' <span class="card-qty" data-qty-badge="' + index + '"' + (card.quantity && card.quantity > 1 ? '' : ' style="display:none"') + '>(' + (card.quantity || 1) + 'x)</span></div>',
-        (card.foil ? '<div class="card-foil">✨ Foil</div>' : ''),
-        '<div class="card-type">' + safeTypeLine + '</div>',
-        getPrintLabel(card) ? '<div class="card-print">Print: ' + escapeHtml(getPrintLabel(card)) + '</div>' : "",
-        '<div class="card-colors">Color identity: ' + getColorIdentityLabel(card.colorIdentity) + '</div>',
-        legality.checked && !legality.legal ? '<div class="status-badge illegal">Illegal for this deck</div>' : "",
-        '<div class="card-controls">',
-        '<div class="qty-stepper">',
-        '<button type="button" data-action="qty-down" data-index="' + index + '" aria-label="Decrease quantity of ' + safeCardName + '">−</button>',
-        '<span class="qty-value" data-qty-index="' + index + '">' + (card.quantity || 1) + '</span>',
-        '<button type="button" data-action="qty-up" data-index="' + index + '" aria-label="Increase quantity of ' + safeCardName + '">+</button>',
-        '</div>',
-        '<input type="text" id="' + deckInputId + '" list="deckOptions" value="' + safeDeckName + '" aria-label="Deck name for ' + safeCardName + '" />',
-        '<button type="button" data-action="move" data-index="' + index + '">Move to deck</button>',
-        '<input type="number" class="qty-input" min="1" value="' + (card.quantity || 1) + '" aria-label="Quantity for ' + safeCardName + '" data-qty-index="' + index + '" />',
-        '<button type="button" data-action="set-qty" data-index="' + index + '">Set qty</button>',
-        '<button type="button" data-action="remove" data-index="' + index + '">Remove</button>',
-        "</div>"
-      ].join("");
-      grid.appendChild(newCard);
+      let barTrack = document.createElement("div");
+      barTrack.className = "breakdown-bar-track";
+      let barFill = document.createElement("div");
+      barFill.className = "breakdown-bar-fill";
+      barFill.style.width = pct + "%";
+      barTrack.appendChild(barFill);
+      barRow.appendChild(barTrack);
+      barsEl.appendChild(barRow);
     });
 
-    elements.cardGrid.appendChild(section);
-  });
+    breakdownEl.appendChild(barsEl);
+    sidebar.appendChild(breakdownEl);
+  }
 
+  let actionsEl = document.createElement("div");
+  actionsEl.className = "deck-detail-sidebar-actions";
+  let builderBtn = document.createElement("a");
+  builderBtn.href = "#builder";
+  builderBtn.className = "btn-deck-action";
+  builderBtn.textContent = "Open in Deck Builder";
+  builderBtn.addEventListener("click", function() {
+    localStorage.setItem(BUILDER_DECK_KEY, currentDeckDetail);
+  });
+  actionsEl.appendChild(builderBtn);
+  sidebar.appendChild(actionsEl);
+
+  layout.appendChild(sidebar);
+
+  // --- MAIN CARD LIST ---
+  let main = document.createElement("div");
+  main.className = "deck-detail-main";
+
+  if (deckEntries.length === 0) {
+    let empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "No cards in this deck yet.";
+    main.appendChild(empty);
+  } else {
+    DECK_TYPE_CATEGORIES.forEach(function(cat) {
+      let entries = groups[cat];
+      if (entries.length === 0) return;
+
+      entries.sort(function(a, b) { return a.card.name.localeCompare(b.card.name); });
+      let catCount = entries.reduce(function(sum, e) { return sum + (e.card.quantity || 1); }, 0);
+
+      let section = document.createElement("section");
+      section.className = "deck-detail-section";
+      section.id = "detail-section-" + cat.toLowerCase();
+
+      let heading = document.createElement("h3");
+      heading.className = "deck-detail-section-heading";
+      heading.textContent = cat + " (" + catCount + ")";
+      section.appendChild(heading);
+
+      let cardList = document.createElement("div");
+      cardList.className = "deck-card-list";
+
+      entries.forEach(function(entry) {
+        let card = entry.card;
+        let index = entry.index;
+        let legality = getDeckLegality(card);
+
+        let row = document.createElement("div");
+        row.className = "deck-card-row" + (legality.checked && !legality.legal ? " deck-card-row-illegal" : "");
+
+        let nameWrap = document.createElement("div");
+        nameWrap.className = "deck-card-name-wrap";
+
+        let nameEl = document.createElement("span");
+        nameEl.className = "deck-card-name";
+        nameEl.textContent = card.name;
+        if (card.image) nameEl.dataset.cardImage = card.image;
+        nameWrap.appendChild(nameEl);
+
+        let typeEl = document.createElement("span");
+        typeEl.className = "deck-card-type";
+        typeEl.textContent = card.type || "";
+        nameWrap.appendChild(typeEl);
+
+        if (card.foil) {
+          let foilEl = document.createElement("span");
+          foilEl.className = "deck-card-foil";
+          foilEl.title = "Foil";
+          foilEl.textContent = "✨";
+          nameWrap.appendChild(foilEl);
+        }
+
+        if (legality.checked && !legality.legal) {
+          let badgeEl = document.createElement("span");
+          badgeEl.className = "status-badge illegal deck-card-illegal-badge";
+          badgeEl.textContent = "Illegal";
+          nameWrap.appendChild(badgeEl);
+        }
+
+        row.appendChild(nameWrap);
+
+        let controls = document.createElement("div");
+        controls.className = "deck-card-controls";
+
+        let stepper = document.createElement("div");
+        stepper.className = "qty-stepper";
+        stepper.innerHTML = [
+          '<button type="button" data-action="qty-down" data-index="' + index + '" aria-label="Decrease quantity">−</button>',
+          '<span class="qty-value" data-qty-index="' + index + '">' + (card.quantity || 1) + '</span>',
+          '<button type="button" data-action="qty-up" data-index="' + index + '" aria-label="Increase quantity">+</button>',
+        ].join("");
+        controls.appendChild(stepper);
+
+        let removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "deck-card-remove-btn";
+        removeBtn.dataset.action = "remove";
+        removeBtn.dataset.index = String(index);
+        removeBtn.textContent = "Remove";
+        controls.appendChild(removeBtn);
+
+        row.appendChild(controls);
+        cardList.appendChild(row);
+      });
+
+      section.appendChild(cardList);
+      main.appendChild(section);
+    });
+  }
+
+  layout.appendChild(main);
+  elements.cardGrid.appendChild(layout);
+
+  bindDeckDetailHoverPreview();
   bindCardActionButtons();
+}
+
+function bindDeckDetailHoverPreview() {
+  let popup = document.getElementById("cardPreviewPopup");
+  if (!popup) {
+    popup = document.createElement("div");
+    popup.id = "cardPreviewPopup";
+    popup.className = "card-preview-popup hidden";
+    let img = document.createElement("img");
+    img.alt = "Card preview";
+    popup.appendChild(img);
+    document.body.appendChild(popup);
+  }
+  let popupImg = popup.querySelector("img");
+
+  document.querySelectorAll(".deck-card-name[data-card-image]").forEach(function(el) {
+    el.addEventListener("mouseenter", function() {
+      let imageUrl = el.dataset.cardImage;
+      if (!imageUrl) return;
+      popupImg.src = imageUrl;
+      let rect = el.getBoundingClientRect();
+      let popupWidth = 220;
+      let leftPos = rect.right + 16;
+      if (leftPos + popupWidth > window.innerWidth - 8) {
+        leftPos = rect.left - popupWidth - 16;
+      }
+      let topPos = Math.min(Math.max(8, rect.top - 20), window.innerHeight - 320);
+      popup.style.left = leftPos + "px";
+      popup.style.top = topPos + "px";
+      popup.classList.remove("hidden");
+    });
+    el.addEventListener("mouseleave", function() {
+      popup.classList.add("hidden");
+    });
+  });
 }
 
 function displayDeckBuilder() {
@@ -1261,11 +1511,21 @@ function displayDeckBuilder() {
   let deckCards = [];
   let availableCards = [];
 
+  let deckCardNames = new Set(
+    collection
+      .filter(function(card) { return normalizeDeckName(card.deck || "unsorted") === targetDeck; })
+      .map(function(card) { return card.name.toLowerCase(); })
+  );
+
   collection.forEach(function(card, index) {
     let deckName = normalizeDeckName(card.deck || "unsorted");
 
     if (deckName === targetDeck) {
       deckCards.push({ card: card, index: index, deckName: deckName });
+      return;
+    }
+
+    if (deckCardNames.has(card.name.toLowerCase())) {
       return;
     }
 
@@ -1603,6 +1863,17 @@ function renderChatSuggestions(scryfallCards, targetDeck) {
   let container = document.createElement("div");
   container.className = "chat-suggestions";
 
+  function flattenCardName(name) {
+    return (name || "").toLowerCase().replace(/[‘’‚‛′‵]/g, "'");
+  }
+
+  let deckCardNames = new Set(
+    collection
+      .filter(function(c) { return normalizeDeckName(c.deck || "unsorted") === targetDeck; })
+      .map(function(c) { return flattenCardName(c.name); })
+  );
+  let ownedCardNames = new Set(collection.map(function(c) { return flattenCardName(c.name); }));
+
   scryfallCards.forEach(function(card) {
     let cardEl = document.createElement("div");
     cardEl.className = "chat-suggestion-card";
@@ -1625,13 +1896,9 @@ function renderChatSuggestions(scryfallCards, targetDeck) {
     typeEl.textContent = card.type_line || "";
     cardEl.appendChild(typeEl);
 
-    let alreadyInDeck = collection.some(function(c) {
-      return c.name.toLowerCase() === card.name.toLowerCase()
-        && normalizeDeckName(c.deck || "unsorted") === targetDeck;
-    });
-    let alreadyOwned = !alreadyInDeck && collection.some(function(c) {
-      return c.name.toLowerCase() === card.name.toLowerCase();
-    });
+    let cardNameLower = flattenCardName(card.name);
+    let alreadyInDeck = deckCardNames.has(cardNameLower);
+    let alreadyOwned = !alreadyInDeck && ownedCardNames.has(cardNameLower);
 
     let btn = document.createElement("button");
     btn.type = "button";
@@ -2357,7 +2624,8 @@ async function refreshMissingColorIdentities() {
         return card;
       });
       if (updatedCards.length > 0) {
-        await dbUpsertCards(updatedCards);
+        let uniqueUpdated = Array.from(new Map(updatedCards.map(function(c) { return [c.id, c]; })).values());
+        await dbUpsertCards(uniqueUpdated);
       }
     } catch (error) {
       console.error("Unable to refresh color identities.", error);
