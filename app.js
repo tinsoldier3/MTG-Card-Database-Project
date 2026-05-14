@@ -476,7 +476,11 @@ function normalizeStoredCard(card) {
     }) : [],
     set: typeof safeCard.set === "string" ? safeCard.set.toLowerCase() : "",
     collectorNumber: typeof safeCard.collectorNumber === "string" ? safeCard.collectorNumber : "",
-    scryfallId: typeof safeCard.scryfallId === "string" ? safeCard.scryfallId : ""
+    scryfallId: typeof safeCard.scryfallId === "string" ? safeCard.scryfallId : "",
+    condition: typeof safeCard.condition === "string" ? safeCard.condition : "",
+    acquiredDate: typeof safeCard.acquiredDate === "string" ? safeCard.acquiredDate : "",
+    purchasePrice: safeCard.purchasePrice != null && Number.isFinite(Number(safeCard.purchasePrice)) ? Number(safeCard.purchasePrice) : null,
+    notes: typeof safeCard.notes === "string" ? safeCard.notes : ""
   };
 }
 
@@ -1415,6 +1419,7 @@ function displayDeckDetail() {
 
         let row = document.createElement("div");
         row.className = "deck-card-row" + (legality.checked && !legality.legal ? " deck-card-row-illegal" : "");
+        row.dataset.cardIndex = String(index);
 
         let nameWrap = document.createElement("div");
         nameWrap.className = "deck-card-name-wrap";
@@ -1445,6 +1450,14 @@ function displayDeckDetail() {
           nameWrap.appendChild(badgeEl);
         }
 
+        if (card.condition) {
+          let condBadge = document.createElement("span");
+          condBadge.className = "deck-card-condition-badge";
+          condBadge.textContent = card.condition;
+          condBadge.title = getConditionLabel(card.condition);
+          nameWrap.appendChild(condBadge);
+        }
+
         row.appendChild(nameWrap);
 
         let controls = document.createElement("div");
@@ -1458,6 +1471,14 @@ function displayDeckDetail() {
           '<button type="button" data-action="qty-up" data-index="' + index + '" aria-label="Increase quantity">+</button>',
         ].join("");
         controls.appendChild(stepper);
+
+        let detailsBtn = document.createElement("button");
+        detailsBtn.type = "button";
+        detailsBtn.className = "deck-card-details-btn";
+        detailsBtn.dataset.action = "edit-details";
+        detailsBtn.dataset.index = String(index);
+        detailsBtn.textContent = "Details";
+        controls.appendChild(detailsBtn);
 
         let removeBtn = document.createElement("button");
         removeBtn.type = "button";
@@ -2418,6 +2439,12 @@ function bindCardActionButtons() {
       if (delta !== 0) updateCardQuantity(index, delta);
     });
   });
+
+  document.querySelectorAll("[data-action='edit-details']").forEach(function(button) {
+    button.addEventListener("click", function() {
+      openCardDetailsModal(Number(button.dataset.index));
+    });
+  });
 }
 
 async function fetchNamedCard(cardName) {
@@ -2620,6 +2647,156 @@ async function updateCardQuantity(index, delta) {
       qtyBadge.style.display = currentQty > 1 ? "" : "none";
     }
     showStatusMessage("Could not update " + card.name + " quantity. Please try again.");
+  }
+}
+
+const CARD_CONDITIONS = [
+  { value: "NM", label: "Near Mint (NM)" },
+  { value: "LP", label: "Lightly Played (LP)" },
+  { value: "MP", label: "Moderately Played (MP)" },
+  { value: "HP", label: "Heavily Played (HP)" },
+  { value: "DMG", label: "Damaged (DMG)" }
+];
+
+function getConditionLabel(value) {
+  let found = CARD_CONDITIONS.find(function(c) { return c.value === value; });
+  return found ? found.label : value;
+}
+
+function openCardDetailsModal(index) {
+  let card = collection[index];
+  if (!card) return;
+
+  let existing = document.getElementById("cardDetailsModal");
+  if (existing) existing.remove();
+
+  let overlay = document.createElement("div");
+  overlay.id = "cardDetailsModal";
+  overlay.className = "card-details-modal-overlay";
+
+  let modal = document.createElement("div");
+  modal.className = "card-details-modal";
+
+  let header = document.createElement("div");
+  header.className = "card-details-modal-header";
+  let title = document.createElement("h3");
+  title.className = "card-details-modal-title";
+  title.textContent = card.name;
+  let closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "card-details-modal-close";
+  closeBtn.setAttribute("aria-label", "Close");
+  closeBtn.textContent = "×";
+  header.appendChild(title);
+  header.appendChild(closeBtn);
+  modal.appendChild(header);
+
+  let body = document.createElement("div");
+  body.className = "card-details-modal-body";
+
+  function makeField(labelText, inputEl) {
+    let group = document.createElement("div");
+    group.className = "card-details-field-group";
+    let label = document.createElement("label");
+    label.textContent = labelText;
+    group.appendChild(label);
+    group.appendChild(inputEl);
+    return group;
+  }
+
+  let condSelect = document.createElement("select");
+  condSelect.innerHTML = '<option value="">— Not set —</option>' +
+    CARD_CONDITIONS.map(function(c) {
+      return '<option value="' + c.value + '">' + c.label + '</option>';
+    }).join("");
+  condSelect.value = card.condition || "";
+  body.appendChild(makeField("Condition", condSelect));
+
+  let dateInput = document.createElement("input");
+  dateInput.type = "date";
+  dateInput.value = card.acquiredDate || "";
+  body.appendChild(makeField("Date Acquired", dateInput));
+
+  let priceInput = document.createElement("input");
+  priceInput.type = "number";
+  priceInput.min = "0";
+  priceInput.step = "0.01";
+  priceInput.placeholder = "0.00";
+  priceInput.value = card.purchasePrice != null ? card.purchasePrice : "";
+  body.appendChild(makeField("Purchase Price ($)", priceInput));
+
+  let notesInput = document.createElement("textarea");
+  notesInput.rows = 3;
+  notesInput.placeholder = "Any notes about this card…";
+  notesInput.value = card.notes || "";
+  body.appendChild(makeField("Notes", notesInput));
+
+  modal.appendChild(body);
+
+  let footer = document.createElement("div");
+  footer.className = "card-details-modal-footer";
+  let saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.className = "card-details-save-btn";
+  saveBtn.textContent = "Save";
+  let cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "card-details-cancel-btn";
+  cancelBtn.textContent = "Cancel";
+  footer.appendChild(saveBtn);
+  footer.appendChild(cancelBtn);
+  modal.appendChild(footer);
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  function close() { overlay.remove(); }
+  closeBtn.addEventListener("click", close);
+  cancelBtn.addEventListener("click", close);
+  overlay.addEventListener("click", function(e) { if (e.target === overlay) close(); });
+
+  saveBtn.addEventListener("click", async function() {
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Saving…";
+    let rawPrice = parseFloat(priceInput.value);
+    await updateCardMetadata(index, {
+      condition: condSelect.value,
+      acquiredDate: dateInput.value,
+      purchasePrice: Number.isFinite(rawPrice) && rawPrice >= 0 ? rawPrice : null,
+      notes: notesInput.value.trim()
+    });
+    close();
+  });
+}
+
+async function updateCardMetadata(index, updates) {
+  let card = collection[index];
+  if (!card) return;
+  let updatedCard = { ...card, ...updates };
+  collection[index] = updatedCard;
+
+  // Update condition badge in-place without a full re-render
+  let row = document.querySelector(".deck-card-row[data-card-index='" + index + "']");
+  if (row) {
+    let nameWrap = row.querySelector(".deck-card-name-wrap");
+    let existingBadge = nameWrap && nameWrap.querySelector(".deck-card-condition-badge");
+    if (existingBadge) existingBadge.remove();
+    if (updates.condition && nameWrap) {
+      let badge = document.createElement("span");
+      badge.className = "deck-card-condition-badge";
+      badge.textContent = updates.condition;
+      badge.title = getConditionLabel(updates.condition);
+      nameWrap.appendChild(badge);
+    }
+  }
+
+  showStatusMessage(card.name + " details saved.");
+  try {
+    await dbUpsertCards([updatedCard]);
+  } catch (error) {
+    console.error("Could not save card details.", error);
+    collection[index] = card;
+    showStatusMessage("Could not save details for " + card.name + ". Please try again.");
   }
 }
 
@@ -3132,7 +3309,11 @@ function cardToRow(card) {
     scryfall_id: card.scryfallId,
     color_identity: card.colorIdentity,
     image: card.image,
-    user_id: currentUserId
+    user_id: currentUserId,
+    condition: card.condition || null,
+    acquired_date: card.acquiredDate || null,
+    purchase_price: card.purchasePrice != null ? card.purchasePrice : null,
+    notes: card.notes || null
   };
 }
 
@@ -3148,7 +3329,11 @@ function rowToCard(row) {
     collectorNumber: row.collector_number,
     scryfallId: row.scryfall_id,
     colorIdentity: row.color_identity || [],
-    image: row.image
+    image: row.image,
+    condition: row.condition || "",
+    acquiredDate: row.acquired_date || "",
+    purchasePrice: row.purchase_price != null ? Number(row.purchase_price) : null,
+    notes: row.notes || ""
   });
 }
 

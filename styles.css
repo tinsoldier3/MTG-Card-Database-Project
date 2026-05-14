@@ -1316,3 +1316,155 @@ button:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* ========================= */
+/* CARD DETAILS MODAL        */
+/* ========================= */
+
+.card-details-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.card-details-modal {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+}
+
+.card-details-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.card-details-modal-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-details-modal-close {
+  background: none;
+  border: none;
+  font-size: 1.4rem;
+  line-height: 1;
+  padding: 2px 6px;
+  color: var(--text);
+  cursor: pointer;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.card-details-modal-close:hover {
+  opacity: 1;
+}
+
+.card-details-modal-body {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.card-details-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.card-details-field-group label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.6;
+}
+
+.card-details-field-group select,
+.card-details-field-group input,
+.card-details-field-group textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 14px;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.card-details-field-group textarea {
+  resize: vertical;
+  font-family: inherit;
+}
+
+.card-details-modal-footer {
+  display: flex;
+  gap: 8px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.card-details-save-btn {
+  flex: 1;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.card-details-save-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.card-details-save-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.card-details-cancel-btn {
+  padding: 10px 18px;
+  font-size: 14px;
+}
+
+/* Condition badge in deck card rows */
+.deck-card-condition-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  opacity: 0.75;
+  flex-shrink: 0;
+}
+
+/* Details button */
+.deck-card-details-btn {
+  font-size: 12px;
+  padding: 3px 10px;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.deck-card-details-btn:hover {
+  opacity: 1;
+}

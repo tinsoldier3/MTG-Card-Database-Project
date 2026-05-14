@@ -25,6 +25,8 @@ Build a small but reliable collection app that is easy to maintain, easy to exte
 - **AI Deck Assistant** — chat panel in the deck builder; Scryfall smart search parses natural language prompts into EDHREC-ranked results; optional Anthropic API key upgrades to Claude-powered suggestions with full deck context
 - Collection load fallback — if the paginated Supabase query fails, the app retries with a simple query and notifies you
 - Smart import deduplication — duplicate card lines in import files have their quantities summed; merge mode preserves higher existing quantities instead of overwriting
+- **Deck detail pages** — Archidekt-style per-deck view with mana curve chart, color distribution, live price estimate (Scryfall), type breakdown, and Copy Decklist
+- **Card metadata** — condition (NM/LP/MP/HP/DMG), acquisition date, purchase price, and notes editable per card via Details modal; condition shown as inline badge
 
 ## Project Structure
 
@@ -51,14 +53,13 @@ Supabase (hosted Postgres) replaces localStorage as the source of truth.
 - JSON export remains available as a manual backup option
 - On first sign-in, any existing localStorage data is automatically migrated
 
-### Phase 3 — Future
+### Phase 3 — Complete
 - Track additional metadata: condition, acquisition date, purchase price, notes
 - Optionally migrate the frontend to Vite + Vue once the backend is stable
 
 ## What's Next
 
-1. **Deck detail pages** — Archidekt-style per-deck overview using hash routing (partially addressed by Deck Builder; full detail view not started).
-2. **Framework migration (optional)** — move to Vite + Vue once the data layer is stable.
+1. **Framework migration (optional)** — move to Vite + Vue once the data layer is stable.
 
 ## Supabase Schema
 
