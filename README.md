@@ -8,8 +8,8 @@ Build a small but reliable collection app that is easy to maintain, easy to exte
 
 ## Current State
 
-- Frontend-only app (no custom server)
-- **Supabase** backend for persistent, multi-device storage (Phase 2 complete)
+- **Vue 3 + Vite** frontend with Pinia state management
+- **Supabase** backend for persistent, multi-device storage
 - Email/password authentication via Supabase Auth
 - Row-level security — each user only sees their own collection
 - Uses the Scryfall API to look up cards and deck imports
@@ -18,25 +18,59 @@ Build a small but reliable collection app that is easy to maintain, easy to exte
 - Auto-migrates existing localStorage data to Supabase on first sign-in
 - Realtime sync — collection stays up to date across tabs and devices automatically
 - Optimistic UI — card add, remove, and move operations update instantly with background sync and rollback on error
-- Loading states — auth buttons, collection grid, and card add button show progress during async operations
 - Password reset via email (forgot password link on sign-in screen)
 - In-place quantity editing — each card has a number input and "Set qty" button directly in the card grid
 - **Deck Builder view** — browse your collection alongside a target deck; filter available cards by source (unsorted, other decks, or full collection), card type, and commander legality; move cards in or out with one click
 - **AI Deck Assistant** — chat panel in the deck builder; Scryfall smart search parses natural language prompts into EDHREC-ranked results; optional Anthropic API key upgrades to Claude-powered suggestions with full deck context
 - Collection load fallback — if the paginated Supabase query fails, the app retries with a simple query and notifies you
 - Smart import deduplication — duplicate card lines in import files have their quantities summed; merge mode preserves higher existing quantities instead of overwriting
-- **Deck detail pages** — Archidekt-style per-deck view with mana curve chart, color distribution, live price estimate (Scryfall), type breakdown, and Copy Decklist
+- **Deck detail pages** — per-deck view with mana curve chart, color distribution, live price estimate (Scryfall), type breakdown, and Copy Decklist
 - **Card metadata** — condition (NM/LP/MP/HP/DMG), acquisition date, purchase price, and notes editable per card via Details modal; condition shown as inline badge
+- **Controls panel** — Add Cards (Scryfall lookup), Import deck (.txt, replace/merge/repair prints), Export/Import collection backup, search, and sort on all collection views
 
 ## Project Structure
 
-- [index.html](index.html)
-- [styles.css](styles.css)
-- [app.js](app.js)
+```
+├── index.html
+├── styles.css
+├── vite.config.js
+├── src/
+│   ├── main.js
+│   ├── App.vue
+│   ├── components/
+│   │   ├── AuthPanel.vue
+│   │   ├── ResetPasswordPanel.vue
+│   │   ├── ControlsPanel.vue      # Add Cards, Import/Export, Search, Sort
+│   │   ├── DecksOverview.vue      # Deck tile grid (default view)
+│   │   ├── DeckDetail.vue         # Per-deck detail with mana curve & price
+│   │   ├── DeckBuilder.vue        # Builder + AI assistant
+│   │   ├── CardGrid.vue           # Boxes / By Set views
+│   │   └── CardDetailsModal.vue   # Condition, price, notes editor
+│   ├── store/
+│   │   └── collection.js          # Pinia store (auth, collection CRUD, realtime)
+│   ├── composables/
+│   │   ├── useSupabase.js         # Supabase client + DB helpers
+│   │   └── useScryfall.js         # Scryfall API wrappers
+│   └── utils/
+│       ├── constants.js           # COMMANDER_DECKS, CARD_CONDITIONS, etc.
+│       └── cards.js               # Pure card utility functions
+```
 
 ## How To Run
 
-Open [index.html](index.html) in a browser. You will be prompted to sign in or create an account before accessing your collection.
+```bash
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173` in a browser. You will be prompted to sign in or create an account before accessing your collection.
+
+To build for production:
+
+```bash
+npm run build
+npm run preview
+```
 
 ## Persistence
 
@@ -55,11 +89,7 @@ Supabase (hosted Postgres) replaces localStorage as the source of truth.
 
 ### Phase 3 — Complete
 - Track additional metadata: condition, acquisition date, purchase price, notes
-- Optionally migrate the frontend to Vite + Vue once the backend is stable
-
-## What's Next
-
-1. **Framework migration (optional)** — move to Vite + Vue once the data layer is stable.
+- Migrated frontend to Vite + Vue 3 with Pinia and modular SFC components
 
 ## Supabase Schema
 
@@ -77,7 +107,11 @@ create table cards (
   color_identity text[],
   image text,
   user_id uuid references auth.users(id) on delete cascade,
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  condition text,
+  acquired_date text,
+  purchase_price numeric,
+  notes text
 );
 
 alter table cards enable row level security;
