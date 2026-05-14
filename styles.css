@@ -1194,3 +1194,125 @@ button:hover {
     position: static;
   }
 }
+
+/* ========================= */
+/* DECK DETAIL — STATS       */
+/* ========================= */
+
+.deck-detail-price {
+  opacity: 0.65;
+}
+
+.deck-detail-loading-text {
+  font-size: 12px;
+  opacity: 0.5;
+  font-style: italic;
+  margin: 6px 0 0;
+}
+
+/* Color distribution */
+.deck-detail-color-dist {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.color-dist-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.color-dist-track {
+  flex: 1;
+  height: 5px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.color-dist-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+.color-dist-fill-w { background: #c8b480; }
+.color-dist-fill-u { background: #0e68ab; }
+.color-dist-fill-b { background: #6b5b7a; }
+.color-dist-fill-r { background: #d3202a; }
+.color-dist-fill-g { background: #00733e; }
+.color-dist-fill-c { background: #9e9e9e; }
+
+.color-dist-count {
+  min-width: 22px;
+  text-align: right;
+  font-size: 11px;
+  opacity: 0.65;
+}
+
+/* Mana curve */
+.deck-detail-mana-curve-section {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px 10px;
+  margin-bottom: 24px;
+}
+
+.mana-curve-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 80px;
+  margin-top: 10px;
+}
+
+.mana-curve-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.mana-curve-bar {
+  width: 100%;
+  background: var(--accent);
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+}
+
+.mana-curve-count {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.8;
+  min-height: 14px;
+}
+
+.mana-curve-label {
+  font-size: 11px;
+  opacity: 0.5;
+  font-weight: 500;
+}
+
+/* Secondary action button */
+.btn-deck-action-secondary {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.btn-deck-action-secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}

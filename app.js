@@ -128,6 +128,7 @@ let pendingChatMessageEl = null;
 let setNameCache = {};
 let realtimeChannel = null;
 let isPasswordRecovery = false;
+const deckScryfallCache = {};
 
 document.addEventListener("DOMContentLoaded", async function() {
   cacheElements();
@@ -1285,8 +1286,15 @@ function displayDeckDetail() {
   statsEl.className = "deck-detail-stats";
   statsEl.textContent = totalCards + " cards";
   if (illegalCount > 0) statsEl.textContent += " • " + illegalCount + " outside color identity";
+  let priceSpan = document.createElement("span");
+  priceSpan.className = "deck-detail-price";
+  priceSpan.textContent = " • loading price…";
+  statsEl.appendChild(priceSpan);
   sidebarInfo.appendChild(statsEl);
   sidebar.appendChild(sidebarInfo);
+
+  let colorDistEl = buildColorDistributionEl(deckEntries);
+  if (colorDistEl) sidebar.appendChild(colorDistEl);
 
   // Breakdown bars
   let groups = {};
@@ -1345,6 +1353,21 @@ function displayDeckDetail() {
     localStorage.setItem(BUILDER_DECK_KEY, currentDeckDetail);
   });
   actionsEl.appendChild(builderBtn);
+
+  let decklistBtn = document.createElement("button");
+  decklistBtn.type = "button";
+  decklistBtn.className = "btn-deck-action btn-deck-action-secondary";
+  decklistBtn.textContent = "Copy Decklist";
+  decklistBtn.addEventListener("click", function() {
+    let text = generateDecklist(groups);
+    navigator.clipboard.writeText(text).then(function() {
+      decklistBtn.textContent = "Copied!";
+      setTimeout(function() { decklistBtn.textContent = "Copy Decklist"; }, 2000);
+    }).catch(function() {
+      alert("Deck list:\n\n" + text);
+    });
+  });
+  actionsEl.appendChild(decklistBtn);
   sidebar.appendChild(actionsEl);
 
   layout.appendChild(sidebar);
@@ -1352,6 +1375,13 @@ function displayDeckDetail() {
   // --- MAIN CARD LIST ---
   let main = document.createElement("div");
   main.className = "deck-detail-main";
+
+  let manaCurveEl = document.createElement("div");
+  manaCurveEl.className = "deck-detail-mana-curve-section";
+  if (deckEntries.length > 0) {
+    manaCurveEl.innerHTML = '<h4 class="deck-detail-breakdown-heading">Mana Curve</h4><p class="deck-detail-loading-text">Loading…</p>';
+    main.appendChild(manaCurveEl);
+  }
 
   if (deckEntries.length === 0) {
     let empty = document.createElement("p");
@@ -1451,6 +1481,206 @@ function displayDeckDetail() {
 
   bindDeckDetailHoverPreview();
   bindCardActionButtons();
+  if (deckEntries.length > 0) {
+    loadDeckDetailAsyncStats(deckEntries, priceSpan, manaCurveEl);
+  }
+}
+
+function buildColorDistributionEl(deckEntries) {
+  let counts = { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 };
+  deckEntries.forEach(function(e) {
+    let qty = e.card.quantity || 1;
+    let colors = e.card.colorIdentity || [];
+    if (colors.length === 0) {
+      counts.C += qty;
+    } else {
+      colors.forEach(function(c) {
+        if (Object.prototype.hasOwnProperty.call(counts, c)) counts[c] += qty;
+      });
+    }
+  });
+
+  let present = ["W", "U", "B", "R", "G", "C"].filter(function(c) { return counts[c] > 0; });
+  if (present.length === 0) return null;
+
+  let max = Math.max.apply(null, present.map(function(c) { return counts[c]; }));
+
+  let wrap = document.createElement("div");
+  wrap.className = "deck-detail-color-dist";
+
+  let heading = document.createElement("h4");
+  heading.className = "deck-detail-breakdown-heading";
+  heading.textContent = "Colors";
+  wrap.appendChild(heading);
+
+  present.forEach(function(c) {
+    let row = document.createElement("div");
+    row.className = "color-dist-row";
+
+    let pip = document.createElement("span");
+    pip.className = "color-pip color-pip-" + c.toLowerCase();
+    pip.title = COLOR_NAMES[c] || c;
+    row.appendChild(pip);
+
+    let track = document.createElement("div");
+    track.className = "color-dist-track";
+    let fill = document.createElement("div");
+    fill.className = "color-dist-fill color-dist-fill-" + c.toLowerCase();
+    fill.style.width = Math.max(4, Math.round((counts[c] / max) * 100)) + "%";
+    fill.style.height = "100%";
+    track.appendChild(fill);
+    row.appendChild(track);
+
+    let countEl = document.createElement("span");
+    countEl.className = "color-dist-count";
+    countEl.textContent = counts[c];
+    row.appendChild(countEl);
+
+    wrap.appendChild(row);
+  });
+
+  return wrap;
+}
+
+function generateDecklist(groups) {
+  let lines = [];
+  DECK_TYPE_CATEGORIES.forEach(function(cat) {
+    let entries = groups[cat];
+    if (!entries || entries.length === 0) return;
+    lines.push("// " + cat);
+    entries
+      .slice()
+      .sort(function(a, b) { return a.card.name.localeCompare(b.card.name); })
+      .forEach(function(e) {
+        lines.push((e.card.quantity || 1) + " " + e.card.name);
+      });
+    lines.push("");
+  });
+  return lines.join("\n").trim();
+}
+
+async function loadDeckDetailAsyncStats(deckEntries, priceSpan, manaCurveEl) {
+  let cacheKey = currentDeckDetail;
+  let scryfallData = deckScryfallCache[cacheKey];
+  if (!scryfallData) {
+    scryfallData = await fetchDeckScryfallData(deckEntries);
+    deckScryfallCache[cacheKey] = scryfallData;
+  }
+
+  let price = calcDeckPrice(deckEntries, scryfallData);
+  priceSpan.textContent = price !== null ? " • $" + price + " est." : "";
+
+  let curveData = buildManaCurveData(deckEntries, scryfallData);
+  let curveChart = renderManaCurveEl(curveData);
+  manaCurveEl.innerHTML = "";
+  let heading = document.createElement("h4");
+  heading.className = "deck-detail-breakdown-heading";
+  heading.textContent = "Mana Curve";
+  manaCurveEl.appendChild(heading);
+  manaCurveEl.appendChild(curveChart);
+}
+
+async function fetchDeckScryfallData(deckEntries) {
+  let ids = [];
+  let seen = {};
+  deckEntries.forEach(function(e) {
+    let id = e.card.scryfallId;
+    if (id && typeof id === "string" && id.length > 0 && !seen[id]) {
+      ids.push(id);
+      seen[id] = true;
+    }
+  });
+
+  if (ids.length === 0) return {};
+
+  let result = {};
+  for (let i = 0; i < ids.length; i += 75) {
+    let batch = ids.slice(i, i + 75);
+    try {
+      let response = await fetch("https://api.scryfall.com/cards/collection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifiers: batch.map(function(id) { return { id: id }; }) })
+      });
+      if (!response.ok) continue;
+      let data = await response.json();
+      if (data.object === "list" && Array.isArray(data.data)) {
+        data.data.forEach(function(card) {
+          result[card.id] = { cmc: card.cmc || 0, prices: card.prices || {} };
+        });
+      }
+    } catch (e) {
+      console.warn("Scryfall deck data fetch failed:", e);
+    }
+  }
+  return result;
+}
+
+function buildManaCurveData(deckEntries, scryfallData) {
+  let curve = { "0": 0, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6+": 0 };
+  deckEntries.forEach(function(e) {
+    let cat = getDeckTypeCategory(e.card, currentDeckDetail);
+    if (cat === "Lands") return;
+    let sfData = e.card.scryfallId ? scryfallData[e.card.scryfallId] : null;
+    let cmc = sfData ? sfData.cmc : 0;
+    let qty = e.card.quantity || 1;
+    let bucket = cmc >= 6 ? "6+" : String(Math.floor(cmc));
+    curve[bucket] = (curve[bucket] || 0) + qty;
+  });
+  return curve;
+}
+
+function renderManaCurveEl(curveData) {
+  let buckets = ["0", "1", "2", "3", "4", "5", "6+"];
+  let max = Math.max.apply(null, buckets.map(function(b) { return curveData[b] || 0; }));
+
+  let wrap = document.createElement("div");
+  wrap.className = "mana-curve-chart";
+
+  buckets.forEach(function(b) {
+    let count = curveData[b] || 0;
+
+    let col = document.createElement("div");
+    col.className = "mana-curve-col";
+
+    let countEl = document.createElement("div");
+    countEl.className = "mana-curve-count";
+    countEl.textContent = count > 0 ? count : "";
+    col.appendChild(countEl);
+
+    let bar = document.createElement("div");
+    bar.className = "mana-curve-bar";
+    bar.style.height = max > 0 ? Math.max(2, Math.round((count / max) * 60)) + "px" : "2px";
+    col.appendChild(bar);
+
+    let label = document.createElement("div");
+    label.className = "mana-curve-label";
+    label.textContent = b;
+    col.appendChild(label);
+
+    wrap.appendChild(col);
+  });
+
+  return wrap;
+}
+
+function calcDeckPrice(deckEntries, scryfallData) {
+  let total = 0;
+  let hasAny = false;
+  deckEntries.forEach(function(e) {
+    let sfData = e.card.scryfallId ? scryfallData[e.card.scryfallId] : null;
+    if (!sfData || !sfData.prices) return;
+    let qty = e.card.quantity || 1;
+    let priceStr = e.card.foil
+      ? (sfData.prices.usd_foil || sfData.prices.usd || "0")
+      : (sfData.prices.usd || sfData.prices.usd_foil || "0");
+    let price = parseFloat(priceStr || "0");
+    if (price > 0) {
+      total += price * qty;
+      hasAny = true;
+    }
+  });
+  return hasAny ? total.toFixed(2) : null;
 }
 
 function bindDeckDetailHoverPreview() {
