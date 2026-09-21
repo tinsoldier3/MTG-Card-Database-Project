@@ -108,9 +108,10 @@ export function isBoxOrBinder(deckName) {
   return lowerName.includes("box") || lowerName.includes("binder");
 }
 
-export function getDeckDisplayLabel(deckName) {
-  if (COMMANDER_DECKS[deckName]) {
-    return COMMANDER_DECKS[deckName].label;
+export function getDeckDisplayLabel(deckName, deckMap) {
+  var map = deckMap || COMMANDER_DECKS;
+  if (map[deckName]) {
+    return map[deckName].label;
   }
   // Title-case the deck name
   return deckName
@@ -140,17 +141,17 @@ export function getPrintLabel(card) {
   return card.collectorNumber ? setLabel + " #" + card.collectorNumber : setLabel;
 }
 
-export function getDeckLegality(card) {
+export function getDeckLegality(card, deckMap) {
+  var map = deckMap || COMMANDER_DECKS;
   let deckName = normalizeDeckName(card.deck || "unsorted");
-  let hasKnownCommander = Boolean(COMMANDER_DECKS[deckName]);
+  let deckInfo = map[deckName];
 
-  if (!hasKnownCommander) {
+  if (!deckInfo) {
     return { checked: false, legal: true };
   }
 
-  let commander = COMMANDER_DECKS[deckName];
-  let commanderColors = commander ? commander.colors : null;
-  if (!commanderColors || !Array.isArray(card.colorIdentity)) {
+  let commanderColors = deckInfo.colors;
+  if (!commanderColors || commanderColors.length === 0 || !Array.isArray(card.colorIdentity)) {
     return { checked: true, legal: true };
   }
 
@@ -161,8 +162,9 @@ export function getDeckLegality(card) {
   return { checked: true, legal: legal };
 }
 
-export function getDeckTypeCategory(card, deckName) {
-  let commanders = (COMMANDER_DECKS[deckName] && COMMANDER_DECKS[deckName].commander) || [];
+export function getDeckTypeCategory(card, deckName, deckMap) {
+  var map = deckMap || COMMANDER_DECKS;
+  let commanders = (map[deckName] && map[deckName].commander) || [];
   if (commanders.includes(card.name)) return "Commander";
   let type = (card.type || "").toLowerCase();
   if (type.includes("creature")) return "Creatures";
@@ -499,10 +501,10 @@ export function calcDeckPrice(deckEntries, scryfallData) {
  * @param {object} scryfallData - Map of scryfallId -> { cmc, prices }.
  * @param {string} deckName - The normalized deck name (used to detect commanders/lands).
  */
-export function buildManaCurveData(deckEntries, scryfallData, deckName) {
+export function buildManaCurveData(deckEntries, scryfallData, deckName, deckMap) {
   let curve = { "0": 0, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6+": 0 };
   deckEntries.forEach(function(e) {
-    let cat = getDeckTypeCategory(e.card, deckName);
+    let cat = getDeckTypeCategory(e.card, deckName, deckMap);
     if (cat === "Lands") return;
     let sfData = e.card.scryfallId ? scryfallData[e.card.scryfallId] : null;
     let cmc = sfData ? sfData.cmc : 0;

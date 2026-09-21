@@ -8,7 +8,7 @@
           <select id="builderDeckSelect" v-model="selectedDeck">
             <option v-if="builderDeckNames.length === 0" value="">No decks yet</option>
             <option v-for="deckName in builderDeckNames" :key="deckName" :value="deckName">
-              {{ getDeckDisplayLabel(deckName) }}
+              {{ getDeckDisplayLabel(deckName, store.deckMap) }}
             </option>
           </select>
         </div>
@@ -48,7 +48,7 @@
       <!-- Left: In deck -->
       <section class="builder-column">
         <h2 class="deck-heading">In Deck ({{ deckCardCount }})</h2>
-        <p class="deck-meta">Cards already assigned to {{ getDeckDisplayLabel(selectedDeck) }}</p>
+        <p class="deck-meta">Cards already assigned to {{ getDeckDisplayLabel(selectedDeck, store.deckMap) }}</p>
 
         <div class="builder-card-grid">
           <p v-if="deckCards.length === 0" class="empty-state">No cards are assigned to this deck yet.</p>
@@ -56,7 +56,7 @@
           <article
             v-for="entry in deckCards"
             :key="entry.card.id"
-            :class="['builder-card', { 'card-illegal': getDeckLegality(entry.card).checked && !getDeckLegality(entry.card).legal }]"
+            :class="['builder-card', { 'card-illegal': getDeckLegality(entry.card, store.deckMap).checked && !getDeckLegality(entry.card, store.deckMap).legal }]"
           >
             <img
               v-if="entry.card.image"
@@ -70,9 +70,9 @@
             <div class="card-colors">Qty: {{ entry.card.quantity || 1 }} &bull; {{ getColorIdentityLabel(entry.card.colorIdentity) }}</div>
             <div v-if="getPrintLabel(entry.card)" class="card-print">Print: {{ getPrintLabel(entry.card) }}</div>
             <div
-              v-if="getDeckLegality(entry.card).checked && !getDeckLegality(entry.card).legal"
+              v-if="getDeckLegality(entry.card, store.deckMap).checked && !getDeckLegality(entry.card, store.deckMap).legal"
               class="status-badge illegal"
-            >Outside {{ getDeckDisplayLabel(selectedDeck) }} color identity</div>
+            >Outside {{ getDeckDisplayLabel(selectedDeck, store.deckMap) }} color identity</div>
             <div class="builder-card-actions">
               <button type="button" @click="store.moveCardToDeck(entry.index, 'unsorted')">Move to unsorted</button>
             </div>
@@ -83,7 +83,7 @@
       <!-- Right: Available -->
       <section class="builder-column">
         <h2 class="deck-heading">Available Collection Cards ({{ availableCardCount }})</h2>
-        <p class="deck-meta">Cards you can move into {{ getDeckDisplayLabel(selectedDeck) }}</p>
+        <p class="deck-meta">Cards you can move into {{ getDeckDisplayLabel(selectedDeck, store.deckMap) }}</p>
 
         <div class="builder-card-grid">
           <p v-if="availableCards.length === 0" class="empty-state">No other collection cards are available right now.</p>
@@ -103,10 +103,10 @@
             <div class="card-name" style="cursor:pointer;" @click="openModal(entry)">{{ entry.card.name }}</div>
             <div class="card-type">{{ entry.card.type || 'Unknown type' }}</div>
             <div class="card-colors">Qty: {{ entry.card.quantity || 1 }} &bull; {{ getColorIdentityLabel(entry.card.colorIdentity) }}</div>
-            <div class="card-deck-label">Currently in {{ getDeckDisplayLabel(entry.deckName) }}</div>
+            <div class="card-deck-label">Currently in {{ getDeckDisplayLabel(entry.deckName, store.deckMap) }}</div>
             <div v-if="getPrintLabel(entry.card)" class="card-print">Print: {{ getPrintLabel(entry.card) }}</div>
             <div
-              v-if="COMMANDER_DECKS[selectedDeck] && !isCardLegalForCommander(entry.card, selectedDeck)"
+              v-if="store.deckMap[selectedDeck] && !isCardLegalForCommander(entry.card, selectedDeck)"
               class="status-badge illegal"
             >Outside commander color identity</div>
             <div class="builder-card-actions">
@@ -156,7 +156,7 @@
                 <span v-if="isSuggestionInDeck(card)">Already in deck</span>
                 <span v-else-if="isSuggestionOwned(card)">In collection</span>
                 <span v-else-if="msg.addedCards && msg.addedCards.has(card.name)">Added!</span>
-                <span v-else>{{ selectedDeck ? 'Add to ' + getDeckDisplayLabel(selectedDeck) : 'Add to collection' }}</span>
+                <span v-else>{{ selectedDeck ? 'Add to ' + getDeckDisplayLabel(selectedDeck, store.deckMap) : 'Add to collection' }}</span>
               </button>
             </div>
           </div>
@@ -208,7 +208,7 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue'
 import { useCollectionStore } from '../store/collection.js'
-import { COMMANDER_DECKS, BUILDER_DECK_KEY, BUILDER_API_KEY_KEY } from '../utils/constants.js'
+import { BUILDER_DECK_KEY, BUILDER_API_KEY_KEY } from '../utils/constants.js'
 import {
   normalizeDeckName,
   getDeckDisplayLabel,
@@ -254,11 +254,11 @@ const builderDeckNames = computed(() => {
 
   const unique = Array.from(new Set(fromCollection))
 
-  Object.keys(COMMANDER_DECKS).forEach(deckName => {
+  Object.keys(store.deckMap).forEach(deckName => {
     if (!unique.includes(deckName)) unique.push(deckName)
   })
 
-  unique.sort((a, b) => getDeckDisplayLabel(a).localeCompare(getDeckDisplayLabel(b)))
+  unique.sort((a, b) => getDeckDisplayLabel(a, store.deckMap).localeCompare(getDeckDisplayLabel(b, store.deckMap)))
   return unique
 })
 
@@ -277,9 +277,9 @@ watch(builderDeckNames, (names) => {
 // ── Card helpers ───────────────────────────────────────────────
 function isCardLegalForCommander(card, commanderName) {
   if (!commanderName) return true
-  const commander = COMMANDER_DECKS[normalizeDeckName(commanderName)]
-  const commanderColors = commander ? commander.colors : null
-  if (!commanderColors || !Array.isArray(card.colorIdentity)) return true
+  const deckInfo = store.deckMap[normalizeDeckName(commanderName)]
+  const commanderColors = deckInfo ? deckInfo.colors : null
+  if (!commanderColors || commanderColors.length === 0 || !Array.isArray(card.colorIdentity)) return true
   return card.colorIdentity.every(color => commanderColors.includes(color))
 }
 
@@ -329,7 +329,7 @@ const availableCards = computed(() => {
     .filter(entry => matchesTypeFilter(entry.card, typeFilter.value))
     .filter(entry => {
       if (!legalOnly.value) return true
-      if (!COMMANDER_DECKS[selectedDeck.value]) return true
+      if (!store.deckMap[selectedDeck.value]) return true
       return isCardLegalForCommander(entry.card, selectedDeck.value)
     })
     .sort((a, b) => a.card.name.localeCompare(b.card.name))
@@ -345,7 +345,7 @@ const availableCardCount = computed(() =>
 
 const illegalInDeckCount = computed(() =>
   deckCards.value.filter(e => {
-    const leg = getDeckLegality(e.card)
+    const leg = getDeckLegality(e.card, store.deckMap)
     return leg.checked && !leg.legal
   }).length
 )
@@ -365,7 +365,7 @@ const summaryText = computed(() => {
     }
     text += `, filtered to ${typeLabels[typeFilter.value] || typeFilter.value}`
   }
-  if (legalOnly.value && COMMANDER_DECKS[selectedDeck.value]) text += ', commander-legal only'
+  if (legalOnly.value && store.deckMap[selectedDeck.value]) text += ', commander-legal only'
   if (illegalInDeckCount.value > 0) text += `, ${illegalInDeckCount.value} outside commander color identity.`
   else text += '.'
   return text
@@ -406,7 +406,7 @@ async function addSuggestedCard(scryfallCard, msg, targetDeck) {
 
   const newCard = createStoredCard(scryfallCard, { deck: targetDeck, foil: false, quantity: 1 })
   store.collection.push(newCard)
-  store.showStatusMessage(`${newCard.name} added to ${getDeckDisplayLabel(targetDeck)}.`)
+  store.showStatusMessage(`${newCard.name} added to ${getDeckDisplayLabel(targetDeck, store.deckMap)}.`)
   try {
     await store.dbUpsertCards([newCard])
   } catch (error) {
@@ -460,7 +460,7 @@ async function handleChatSend() {
 }
 
 async function handleScryfallChat(prompt, targetDeck, pendingMsg) {
-  const commanderDeck = COMMANDER_DECKS[targetDeck]
+  const commanderDeck = store.deckMap[targetDeck]
   const colors = commanderDeck ? commanderDeck.colors : []
   const query = buildScryfallQuery(prompt, colors)
 
@@ -471,7 +471,7 @@ async function handleScryfallChat(prompt, targetDeck, pendingMsg) {
       pendingMsg.pending = false
       return
     }
-    const label = getDeckDisplayLabel(targetDeck) || 'your deck'
+    const label = getDeckDisplayLabel(targetDeck, store.deckMap) || 'your deck'
     pendingMsg.text = `Here are Scryfall results for ${label} (sorted by EDHREC popularity). Add an Anthropic API key below for AI-powered suggestions.`
     pendingMsg.cards = cards.slice(0, 12)
     pendingMsg.pending = false
@@ -482,7 +482,7 @@ async function handleScryfallChat(prompt, targetDeck, pendingMsg) {
 }
 
 async function handleClaudeChat(prompt, targetDeck, pendingMsg) {
-  const commanderDeck = COMMANDER_DECKS[targetDeck]
+  const commanderDeck = store.deckMap[targetDeck]
   const colors = commanderDeck ? commanderDeck.colors : []
   const deckCardsList = store.collection
     .filter(c => normalizeDeckName(c.deck || 'unsorted') === targetDeck)
@@ -490,7 +490,7 @@ async function handleClaudeChat(prompt, targetDeck, pendingMsg) {
     .join(', ') || 'none yet'
 
   const systemPrompt = 'You are an expert Magic: The Gathering Commander deckbuilding assistant.\n'
-    + `Deck: ${getDeckDisplayLabel(targetDeck)}\n`
+    + `Deck: ${getDeckDisplayLabel(targetDeck, store.deckMap)}\n`
     + (commanderDeck ? `Commander(s): ${commanderDeck.commander.join(', ')}\n` : '')
     + `Color identity: ${colors.length > 0 ? colors.join('') : 'Colorless'}\n`
     + `Cards in deck: ${deckCardsList}\n\n`
@@ -526,7 +526,7 @@ async function handleClaudeChat(prompt, targetDeck, pendingMsg) {
       pendingMsg.pending = false
       await handleScryfallChat(prompt, targetDeck, { text: '', pending: false, cards: pendingMsg.cards = [] })
       // Re-run Scryfall but append new message instead of replacing
-      const commanderDeckFb = COMMANDER_DECKS[targetDeck]
+      const commanderDeckFb = store.deckMap[targetDeck]
       const colorsFb = commanderDeckFb ? commanderDeckFb.colors : []
       const query = buildScryfallQuery(prompt, colorsFb)
       const cards = await fetchScryfallSearch(query)
