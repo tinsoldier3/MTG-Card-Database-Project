@@ -234,7 +234,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useCollectionStore } from '../store/collection.js'
-import { COMMANDER_DECKS, DECK_TYPE_CATEGORIES, BUILDER_DECK_KEY } from '../utils/constants.js'
+import { DECK_TYPE_CATEGORIES, BUILDER_DECK_KEY } from '../utils/constants.js'
 import {
   normalizeDeckName,
   getDeckDisplayLabel,
@@ -263,8 +263,8 @@ const deckEntries = computed(() => {
   return entries
 })
 
-const displayLabel = computed(() => getDeckDisplayLabel(currentDeckDetail.value))
-const commanderDeck = computed(() => COMMANDER_DECKS[currentDeckDetail.value] || null)
+const displayLabel = computed(() => getDeckDisplayLabel(currentDeckDetail.value, store.deckMap))
+const commanderDeck = computed(() => store.deckMap[currentDeckDetail.value] || null)
 
 const commanderName = computed(() => {
   if (!commanderDeck.value) return ''
@@ -285,13 +285,13 @@ const totalCards = computed(() =>
 
 const illegalCount = computed(() =>
   deckEntries.value.filter(e => {
-    const legality = getDeckLegality(e.card)
+    const legality = getDeckLegality(e.card, store.deckMap)
     return legality.checked && !legality.legal
   }).length
 )
 
 function isIllegal(card) {
-  const legality = getDeckLegality(card)
+  const legality = getDeckLegality(card, store.deckMap)
   return legality.checked && !legality.legal
 }
 
@@ -301,7 +301,7 @@ const groups = computed(() => {
   const g = {}
   DECK_TYPE_CATEGORIES.forEach(cat => { g[cat] = [] })
   deckEntries.value.forEach(entry => {
-    const cat = getDeckTypeCategory(entry.card, currentDeckDetail.value)
+    const cat = getDeckTypeCategory(entry.card, currentDeckDetail.value, store.deckMap)
     g[cat].push(entry)
   })
   return g
@@ -423,7 +423,7 @@ async function loadAsyncStats() {
     const computedPrice = calcDeckPrice(deckEntries.value, scryfallData)
     price.value = computedPrice
 
-    const computedCurve = buildManaCurveData(deckEntries.value, scryfallData, cacheKey)
+    const computedCurve = buildManaCurveData(deckEntries.value, scryfallData, cacheKey, store.deckMap)
     curveData.value = computedCurve
   } catch (e) {
     console.warn('Could not load deck async stats:', e)

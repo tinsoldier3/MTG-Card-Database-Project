@@ -1,7 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useCollectionStore } from '../store/collection.js'
-import { COMMANDER_DECKS } from '../utils/constants.js'
 import {
   normalizeDeckName, getDeckDisplayLabel, isBoxOrBinder,
   normalizeStoredCard, createStoredCard, applyCardPrinting,
@@ -35,8 +34,8 @@ const allDeckNames = computed(() => {
   const names = Array.from(new Set(
     store.collection.map(c => normalizeDeckName(c.deck || 'unsorted'))
   ))
-  Object.keys(COMMANDER_DECKS).forEach(n => { if (!names.includes(n)) names.push(n) })
-  return names.sort((a, b) => getDeckDisplayLabel(a).localeCompare(getDeckDisplayLabel(b)))
+  Object.keys(store.deckMap).forEach(n => { if (!names.includes(n)) names.push(n) })
+  return names.sort((a, b) => getDeckDisplayLabel(a, store.deckMap).localeCompare(getDeckDisplayLabel(b, store.deckMap)))
 })
 
 // ── Add card ───────────────────────────────────────────────────────────────
@@ -72,7 +71,7 @@ async function addCard() {
     } else {
       const newCard = createStoredCard(card, { deck: deckName, foil, quantity })
       store.collection.push(newCard)
-      store.showStatusMessage(`${quantity}x ${card.name} added to ${getDeckDisplayLabel(deckName)}.`)
+      store.showStatusMessage(`${quantity}x ${card.name} added to ${getDeckDisplayLabel(deckName, store.deckMap)}.`)
       try {
         await store.dbUpsertCards([newCard])
       } catch (err) {
@@ -167,7 +166,7 @@ async function importDeck(mode) {
     if (result.notFound.length) parts.push(`${result.notFound.length} not found`)
     store.progress.label = 'Import complete — ' + (parts.join(', ') || 'nothing changed')
     store.updateProgress(100)
-    store.showStatusMessage(`${result.allCards.length} cards imported to ${getDeckDisplayLabel(deckName)}.`)
+    store.showStatusMessage(`${result.allCards.length} cards imported to ${getDeckDisplayLabel(deckName, store.deckMap)}.`)
     if (fileInput.value) fileInput.value.value = ''
   } catch (err) {
     console.error('Import failed', err)
@@ -223,7 +222,7 @@ async function repairDeckPrints() {
     })
 
     await store.dbUpsertCards(toUpsert)
-    store.progress.label = `Repair complete! Updated ${updatedCount} cards in ${getDeckDisplayLabel(deckName)}.`
+    store.progress.label = `Repair complete! Updated ${updatedCount} cards in ${getDeckDisplayLabel(deckName, store.deckMap)}.`
     store.updateProgress(100)
     store.showStatusMessage(`Updated ${updatedCount} cards to their intended printings.`)
   } catch (err) {

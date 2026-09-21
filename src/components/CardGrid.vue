@@ -18,7 +18,7 @@
         <label style="font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; opacity:0.6; display:block; margin-bottom:4px;">Commander</label>
         <select v-model="selectedCommanderFilter">
           <option value="">All cards</option>
-          <option v-for="(info, deckName) in COMMANDER_DECKS" :key="deckName" :value="deckName">
+          <option v-for="(info, deckName) in store.deckMap" :key="deckName" :value="deckName">
             {{ info.label }}
           </option>
         </select>
@@ -59,7 +59,7 @@
             <div class="card-type">{{ entry.card.type }}</div>
             <div v-if="getPrintLabel(entry.card)" class="card-print">Print: {{ getPrintLabel(entry.card) }}</div>
             <div class="card-colors">Color identity: {{ getColorIdentityLabel(entry.card.colorIdentity) }}</div>
-            <div class="card-deck-label">Location: {{ getDeckDisplayLabel(normalizeDeckName(entry.card.deck || 'unsorted')) }}</div>
+            <div class="card-deck-label">Location: {{ getDeckDisplayLabel(normalizeDeckName(entry.card.deck || 'unsorted'), store.deckMap) }}</div>
             <div class="card-controls" @click.stop>
               <div class="qty-stepper">
                 <button type="button" @click="store.updateCardQuantity(entry.index, -1)" :aria-label="'Decrease quantity of ' + entry.card.name">&#8722;</button>
@@ -109,7 +109,7 @@
         class="deck-section"
       >
         <h2 class="deck-heading">
-          {{ getDeckDisplayLabel(deckName) }}
+          {{ getDeckDisplayLabel(deckName, store.deckMap) }}
           ({{ entries.reduce((sum, e) => sum + (e.card.quantity || 1), 0) }} cards)
         </h2>
         <div class="card-grid">
@@ -185,11 +185,11 @@
       >
         <h2 class="deck-heading">
           <a :href="'#deck/' + encodeURIComponent(deckName)" class="deck-heading-link">
-            {{ getDeckDisplayLabel(deckName) }}
+            {{ getDeckDisplayLabel(deckName, store.deckMap) }}
           </a>
           ({{ entries.reduce((sum, e) => sum + (e.card.quantity || 1), 0) }} cards)
         </h2>
-        <p v-if="COMMANDER_DECKS[deckName]" class="deck-meta">
+        <p v-if="store.deckMap[deckName]" class="deck-meta">
           {{ deckIllegalCount(entries) > 0
             ? deckIllegalCount(entries) + ' card' + (deckIllegalCount(entries) === 1 ? '' : 's') + ' outside this commander\'s color identity.'
             : 'All visible cards match this commander\'s color identity.'
@@ -199,7 +199,7 @@
           <div
             v-for="entry in sortEntries(entries, deckName)"
             :key="entry.card.id"
-            :class="['card', { 'card-illegal': getDeckLegality(entry.card).checked && !getDeckLegality(entry.card).legal }]"
+            :class="['card', { 'card-illegal': getDeckLegality(entry.card, store.deckMap).checked && !getDeckLegality(entry.card, store.deckMap).legal }]"
             @click="openModal(entry)"
             style="cursor:pointer;"
           >
@@ -215,7 +215,7 @@
             <div v-if="getPrintLabel(entry.card)" class="card-print">Print: {{ getPrintLabel(entry.card) }}</div>
             <div class="card-colors">Color identity: {{ getColorIdentityLabel(entry.card.colorIdentity) }}</div>
             <div
-              v-if="getDeckLegality(entry.card).checked && !getDeckLegality(entry.card).legal"
+              v-if="getDeckLegality(entry.card, store.deckMap).checked && !getDeckLegality(entry.card, store.deckMap).legal"
               class="status-badge illegal"
             >Illegal for this deck</div>
             <div class="card-controls" @click.stop>
@@ -269,7 +269,6 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useCollectionStore } from '../store/collection.js'
-import { COMMANDER_DECKS } from '../utils/constants.js'
 import {
   normalizeDeckName,
   getDeckDisplayLabel,
@@ -304,8 +303,8 @@ const allDeckNames = computed(() => {
   const names = Array.from(new Set(
     store.collection.map(card => normalizeDeckName(card.deck || 'unsorted'))
   ))
-  Object.keys(COMMANDER_DECKS).forEach(n => { if (!names.includes(n)) names.push(n) })
-  return names.sort((a, b) => getDeckDisplayLabel(a).localeCompare(getDeckDisplayLabel(b)))
+  Object.keys(store.deckMap).forEach(n => { if (!names.includes(n)) names.push(n) })
+  return names.sort((a, b) => getDeckDisplayLabel(a, store.deckMap).localeCompare(getDeckDisplayLabel(b, store.deckMap)))
 })
 
 // ── Deck filter options (context-sensitive) ────────────────────
@@ -317,15 +316,15 @@ const deckFilterOptions = computed(() => {
         if (store.currentView === 'boxes') return isBoxOrBinder(deckName)
         return !isBoxOrBinder(deckName)
       })
-  )).sort((a, b) => getDeckDisplayLabel(a).localeCompare(getDeckDisplayLabel(b)))
+  )).sort((a, b) => getDeckDisplayLabel(a, store.deckMap).localeCompare(getDeckDisplayLabel(b, store.deckMap)))
 })
 
 // ── Commander legality helper ──────────────────────────────────
 function isCardLegalForCommander(card, commanderName) {
   if (!commanderName) return true
-  const commander = COMMANDER_DECKS[normalizeDeckName(commanderName)]
-  const commanderColors = commander ? commander.colors : null
-  if (!commanderColors || !Array.isArray(card.colorIdentity)) return true
+  const deckInfo = store.deckMap[normalizeDeckName(commanderName)]
+  const commanderColors = deckInfo ? deckInfo.colors : null
+  if (!commanderColors || commanderColors.length === 0 || !Array.isArray(card.colorIdentity)) return true
   return card.colorIdentity.every(color => commanderColors.includes(color))
 }
 
@@ -406,9 +405,8 @@ function sortEntries(entries, deckName) {
   const sortMode = props.sort
 
   // Commanders always float to top within their deck
-  const commanders = deckName && COMMANDER_DECKS[deckName]
-    ? (COMMANDER_DECKS[deckName].commander || [])
-    : []
+  const deckInfo = deckName ? store.deckMap[deckName] : null
+  const commanders = deckInfo ? (deckInfo.commander || []) : []
 
   sorted.sort((a, b) => {
     const aIsCommander = commanders.includes(a.card.name)
@@ -439,7 +437,7 @@ function sortEntries(entries, deckName) {
 // ── Illegal count for deck section heading ────────────────────
 function deckIllegalCount(entries) {
   return entries.filter(entry => {
-    const leg = getDeckLegality(entry.card)
+    const leg = getDeckLegality(entry.card, store.deckMap)
     return leg.checked && !leg.legal
   }).length
 }

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { supabaseClient } from '../composables/useSupabase.js'
-import { STORAGE_KEY } from '../utils/constants.js'
+import { STORAGE_KEY, COMMANDER_DECKS } from '../utils/constants.js'
 import {
   normalizeStoredCard, rowToCard, cardToRow,
   safelyMapRowsToCards, getCollectionLoadErrorMessage,
@@ -13,6 +13,7 @@ const COLLECTION_LOAD_TIMEOUT_MS = 20000
 export const useCollectionStore = defineStore('collection', {
   state: () => ({
     collection: [],
+    decks: [],
     currentUserId: null,
     userEmail: '',
     currentView: 'decks',
@@ -27,6 +28,20 @@ export const useCollectionStore = defineStore('collection', {
     statusMessageTimeout: null,
     progress: { visible: false, pct: 0, label: '' },
   }),
+
+  getters: {
+    deckMap: (state) => {
+      const map = {}
+      for (const deck of state.decks) {
+        map[deck.name] = {
+          label: deck.label,
+          colors: deck.colors || [],
+          commander: deck.commanders || [],
+        }
+      }
+      return map
+    },
+  },
 
   actions: {
     // ── View routing ──────────────────────────────────────────
@@ -194,6 +209,76 @@ export const useCollectionStore = defineStore('collection', {
       }
     },
 
+    // ── Deck CRUD ─────────────────────────────────────────────
+    async loadDecks() {
+      const { data, error } = await supabaseClient
+        .from('decks')
+        .select('*')
+        .eq('user_id', this.currentUserId)
+      if (error) throw error
+      this.decks = data || []
+    },
+
+    async seedDecksFromConstants() {
+      const rows = Object.entries(COMMANDER_DECKS).map(([name, info]) => ({
+        user_id: this.currentUserId,
+        name,
+        label: info.label,
+        colors: info.colors,
+        commanders: info.commander,
+      }))
+      const { error } = await supabaseClient
+        .from('decks')
+        .upsert(rows, { onConflict: 'user_id,name' })
+      if (error) throw error
+      await this.loadDecks()
+    },
+
+    async createDeck(label, colors, commanders) {
+      const name = label.trim().toLowerCase()
+      const { data, error } = await supabaseClient
+        .from('decks')
+        .insert({ user_id: this.currentUserId, name, label: label.trim(), colors, commanders })
+        .select()
+        .single()
+      if (error) throw error
+      this.decks.push(data)
+      return data
+    },
+
+    async updateDeck(id, updates) {
+      const { data, error } = await supabaseClient
+        .from('decks')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single()
+      if (error) throw error
+      const idx = this.decks.findIndex(d => d.id === id)
+      if (idx !== -1) this.decks[idx] = data
+      return data
+    },
+
+    async deleteDeck(id) {
+      const deck = this.decks.find(d => d.id === id)
+      if (!deck) return
+      const { error } = await supabaseClient.from('decks').delete().eq('id', id)
+      if (error) throw error
+      this.decks = this.decks.filter(d => d.id !== id)
+      // Move cards in this deck to unsorted
+      const affected = this.collection
+        .map((card, index) => ({ card, index }))
+        .filter(({ card }) => normalizeDeckName(card.deck || 'unsorted') === deck.name)
+      if (affected.length > 0) {
+        const updated = affected.map(({ card, index }) => ({ ...card, deck: 'unsorted' }))
+        for (const updatedCard of updated) {
+          const idx = this.collection.findIndex(c => c.id === updatedCard.id)
+          if (idx !== -1) this.collection[idx] = updatedCard
+        }
+        await this.dbUpsertCards(updated)
+      }
+    },
+
     // ── Realtime ──────────────────────────────────────────────
     handleRealtimeEvent(payload) {
       const { eventType } = payload
@@ -236,6 +321,17 @@ export const useCollectionStore = defineStore('collection', {
     // ── Init ──────────────────────────────────────────────────
     async initApp(email) {
       this.userEmail = email || ''
+
+      // Load decks first so tiles show even if the collection load fails
+      try {
+        await this.loadDecks()
+        if (this.decks.length === 0) {
+          await this.seedDecksFromConstants()
+        }
+      } catch (e) {
+        console.warn('Could not load deck metadata:', e)
+      }
+
       try {
         this.collection = await this.loadCollection()
       } catch (err) {
@@ -243,6 +339,8 @@ export const useCollectionStore = defineStore('collection', {
         const msg = getCollectionLoadErrorMessage(err)
         this.showStatusMessage(msg)
         console.error('Collection load failed:', err)
+        this.subscribeToCollection()
+        this.setViewFromHash()
         return
       }
 
