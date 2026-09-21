@@ -321,6 +321,17 @@ export const useCollectionStore = defineStore('collection', {
     // ── Init ──────────────────────────────────────────────────
     async initApp(email) {
       this.userEmail = email || ''
+
+      // Load decks first so tiles show even if the collection load fails
+      try {
+        await this.loadDecks()
+        if (this.decks.length === 0) {
+          await this.seedDecksFromConstants()
+        }
+      } catch (e) {
+        console.warn('Could not load deck metadata:', e)
+      }
+
       try {
         this.collection = await this.loadCollection()
       } catch (err) {
@@ -328,6 +339,8 @@ export const useCollectionStore = defineStore('collection', {
         const msg = getCollectionLoadErrorMessage(err)
         this.showStatusMessage(msg)
         console.error('Collection load failed:', err)
+        this.subscribeToCollection()
+        this.setViewFromHash()
         return
       }
 
@@ -347,16 +360,6 @@ export const useCollectionStore = defineStore('collection', {
         } catch (e) {
           console.warn('Could not auto-migrate localStorage data.', e)
         }
-      }
-
-      // Load deck metadata; seed from constants on first sign-in
-      try {
-        await this.loadDecks()
-        if (this.decks.length === 0) {
-          await this.seedDecksFromConstants()
-        }
-      } catch (e) {
-        console.warn('Could not load deck metadata:', e)
       }
 
       this.subscribeToCollection()
