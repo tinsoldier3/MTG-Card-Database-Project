@@ -1,7 +1,11 @@
 <template>
-  <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
-    <div class="modal-box deck-modal">
-      <h3>{{ deck ? 'Edit Deck' : 'New Deck' }}</h3>
+  <div v-if="show" class="card-details-modal-overlay" @mousedown.self="$emit('close')">
+    <div class="card-details-modal deck-modal">
+      <div class="card-details-modal-header">
+        <h3 class="card-details-modal-title">{{ deck ? 'Edit Deck' : 'New Deck' }}</h3>
+        <button class="card-details-modal-close" @click="$emit('close')" aria-label="Close">×</button>
+      </div>
+      <div class="card-details-modal-body deck-modal-body">
 
       <div class="modal-field">
         <label>Deck Name</label>
@@ -40,18 +44,19 @@
       </div>
 
       <p v-if="error" class="deck-modal-error">{{ error }}</p>
+      </div>
 
-      <div class="modal-actions">
+      <div class="card-details-modal-footer deck-modal-footer">
         <button
           v-if="deck"
-          class="btn btn-danger"
+          class="card-details-cancel-btn deck-modal-delete-btn"
           :disabled="saving"
           @click="confirmDelete"
         >Delete</button>
-        <div class="modal-actions-right">
-          <button class="btn" :disabled="saving" @click="$emit('close')">Cancel</button>
+        <div class="deck-modal-footer-right">
+          <button class="card-details-cancel-btn" :disabled="saving" @click="$emit('close')">Cancel</button>
           <button
-            class="btn btn-primary"
+            class="card-details-save-btn"
             :disabled="saving || !label.trim()"
             @click="save"
           >{{ saving ? 'Saving…' : 'Save' }}</button>
@@ -157,8 +162,14 @@ async function confirmDelete() {
 
 <style scoped>
 .deck-modal {
-  max-width: 420px;
-  width: 100%;
+  max-width: 440px;
+}
+
+.deck-modal-body {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 .modal-field {
@@ -247,17 +258,20 @@ async function confirmDelete() {
   margin: 0.5rem 0;
 }
 
-.modal-actions {
+.deck-modal-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 1.25rem;
   gap: 0.5rem;
 }
 
-.modal-actions-right {
+.deck-modal-footer-right {
   display: flex;
   gap: 0.5rem;
   margin-left: auto;
+}
+
+.deck-modal-delete-btn {
+  color: var(--color-danger, #c0392b) !important;
 }
 </style>
